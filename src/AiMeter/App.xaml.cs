@@ -49,6 +49,9 @@ public partial class App : Application
         var providerManager = _host.Services.GetRequiredService<IProviderManager>();
         await providerManager.StartAsync();
 
+        // Show widget by default
+        _host.Services.GetRequiredService<Views.WidgetWindow>().Show();
+
         base.OnStartup(e);
 
         _notifyIcon = (TaskbarIcon)FindResource("TrayIcon");

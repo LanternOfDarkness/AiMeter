@@ -26,8 +26,11 @@
         
         <!-- Authentication -->
         <StackPanel Grid.Row="2" Orientation="Vertical">
-            <Button Content="Log into Claude" Command="{Binding LoginToClaudeCommand}" Width="150" Height="30" HorizontalAlignment="Left" Background="#5B5B5B" Foreground="White" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" />
-            <TextBlock Text="Requires logging into Claude.ai to fetch web limits." Foreground="#888" FontSize="11" Margin="0,5,0,0" />
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                <Button Content="Log into Claude" Command="{Binding LoginToClaudeCommand}" Width="150" Height="30" HorizontalAlignment="Left" Background="#5B5B5B" Foreground="White" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" />
+                <TextBlock Text="{Binding LoginStatusText}" Foreground="{Binding LoginStatusColor}" VerticalAlignment="Center" Margin="15,0,0,0" FontWeight="Medium" />
+            </StackPanel>
+            <TextBlock Text="Requires logging into Claude.ai to fetch web limits." Foreground="#888" FontSize="11" Margin="0,0,0,0" />
         </StackPanel>
 
         <!-- Buttons -->

@@ -16,6 +16,10 @@ public partial class SettingsViewModel : ObservableObject
 
     public AppConfig Config => _settingsManager.Current;
 
+    public bool IsLoggedIn => !string.IsNullOrEmpty(Config.EncryptedCookies);
+    public string LoginStatusText => IsLoggedIn ? "Status: Logged In \u2714\ufe0f" : "Status: Not Logged In";
+    public string LoginStatusColor => IsLoggedIn ? "#2ECC71" : "#E74C3C";
+
     public SettingsViewModel(ISettingsManager settingsManager, IServiceProvider serviceProvider)
     {
         _settingsManager = settingsManager;
