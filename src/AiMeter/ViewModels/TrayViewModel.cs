@@ -3,24 +3,30 @@ using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AiMeter.Managers;
+using AiMeter.Views;
 
 namespace AiMeter.ViewModels;
 
 public partial class TrayViewModel : ObservableObject
 {
     private readonly IProviderManager _providerManager;
+    private readonly WidgetWindow _widgetWindow;
 
-    public TrayViewModel(IProviderManager providerManager)
+    public TrayViewModel(IProviderManager providerManager, WidgetWindow widgetWindow)
     {
         _providerManager = providerManager;
+        _widgetWindow = widgetWindow;
     }
 
     [RelayCommand]
     private void ShowWidget()
     {
-        var metricsCount = _providerManager.Metrics.Count;
-        var names = string.Join(", ", _providerManager.Metrics.Select(m => m.Name));
-        MessageBox.Show($"Widget would show {metricsCount} metrics:\n{names}", "AiMeter");
+        _widgetWindow.Show();
+        if (_widgetWindow.WindowState == WindowState.Minimized)
+        {
+            _widgetWindow.WindowState = WindowState.Normal;
+        }
+        _widgetWindow.Activate();
     }
 
     [RelayCommand]

@@ -8,9 +8,6 @@
         <!-- Tray Icon Resource -->
         <tb:TaskbarIcon x:Key="TrayIcon"
                         ToolTipText="AiMeter">
-            <tb:TaskbarIcon.DataContext>
-                <viewModels:TrayViewModel />
-            </tb:TaskbarIcon.DataContext>
             <tb:TaskbarIcon.ContextMenu>
                 <ContextMenu>
                     <MenuItem Header="Show Widget" Command="{Binding ShowWidgetCommand}" />

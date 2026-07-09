@@ -29,6 +29,10 @@ public partial class App : Application
 
                 // Register ViewModels
                 services.AddSingleton<TrayViewModel>();
+                services.AddSingleton<WidgetViewModel>();
+
+                // Register Views
+                services.AddSingleton<Views.WidgetWindow>();
             })
             .Build();
     }
@@ -46,7 +50,13 @@ public partial class App : Application
         _notifyIcon = (TaskbarIcon)FindResource("TrayIcon");
         if (_notifyIcon != null)
         {
-            _notifyIcon.Icon = System.Drawing.SystemIcons.Information;
+            var streamInfo = Application.GetResourceStream(new Uri("pack://application:,,,/app.png"));
+            if (streamInfo != null)
+            {
+                using var bmp = new System.Drawing.Bitmap(streamInfo.Stream);
+                var hIcon = bmp.GetHicon();
+                _notifyIcon.Icon = System.Drawing.Icon.FromHandle(hIcon);
+            }
             _notifyIcon.DataContext = _host.Services.GetRequiredService<TrayViewModel>();
             _notifyIcon.ForceCreate();
         }

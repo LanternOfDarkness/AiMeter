@@ -1,0 +1,45 @@
+<Window x:Class="AiMeter.Views.WidgetWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:AiMeter.Controls"
+        xmlns:converters="clr-namespace:AiMeter.Converters"
+        xmlns:viewModels="clr-namespace:AiMeter.ViewModels"
+        mc:Ignorable="d"
+        Title="AiMeter Widget" Height="120" Width="Auto" SizeToContent="Width"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown">
+    
+    <Window.Resources>
+        <converters:QuotaToColorConverter x:Key="QuotaToColorConverter" />
+    </Window.Resources>
+
+    <Border Background="#99000000" CornerRadius="12" Margin="10" Padding="15,10,15,10">
+        <!-- Optional Drop Shadow -->
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.5" />
+        </Border.Effect>
+        
+        <ItemsControl ItemsSource="{Binding Metrics}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Margin="10,0,10,0" ToolTip="{Binding Name}">
+                        <controls:CircularProgress Size="60" StrokeThickness="6"
+                                                   Percentage="{Binding RemainingPercentage}"
+                                                   ValueText="{Binding RemainingQuota}"
+                                                   ForegroundBrush="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}" />
+                        <TextBlock Text="{Binding Name}" Foreground="White" 
+                                   HorizontalAlignment="Center" Margin="0,5,0,0" FontSize="11" MaxWidth="70" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </Border>
+</Window>
