@@ -1,0 +1,7 @@
+- center the numbers for full mode widget.
+- add option to disable opacity and make opacity less when human point cursor on widget.
+- If resets hours > 24 so make it days + hours.
+- Need to change Account tab in setting into Accounts. If Account is logged in need to change log in button into log out.
+- Need to add option icon in widget near other buttons.
+- When I change widget style it is position should stay the same as was before the toggle.
+- Make an readme and description for this repo.
