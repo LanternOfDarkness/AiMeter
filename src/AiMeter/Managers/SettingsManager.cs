@@ -36,6 +36,10 @@ public class SettingsManager : ISettingsManager
                     Current.WidgetOpacity = loadedConfig.WidgetOpacity;
                     Current.PollingIntervalSeconds = loadedConfig.PollingIntervalSeconds;
                     Current.EncryptedCookies = loadedConfig.EncryptedCookies;
+                    if (loadedConfig.SelectedMetrics != null)
+                    {
+                        Current.SelectedMetrics = loadedConfig.SelectedMetrics;
+                    }
                 }
             }
             catch (Exception ex)

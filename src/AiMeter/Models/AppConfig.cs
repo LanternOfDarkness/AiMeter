@@ -12,4 +12,7 @@ public partial class AppConfig : ObservableObject
 
     [ObservableProperty]
     private string? _encryptedCookies;
+
+    [ObservableProperty]
+    private System.Collections.Generic.List<string> _selectedMetrics = new();
 }

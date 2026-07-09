@@ -57,24 +57,30 @@ public class ClaudeWebProvider : IProvider
                 }
             }
 
-            // Example request to verify auth (Replace with real usage endpoint)
-            var response = await _httpClient.GetAsync("https://claude.ai/api/organizations");
-            
-            if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+            // 1. Fetch Organizations
+            var orgsResponse = await _httpClient.GetAsync("https://claude.ai/api/organizations");
+            if (orgsResponse.StatusCode == HttpStatusCode.Unauthorized || orgsResponse.StatusCode == HttpStatusCode.Forbidden)
             {
-                // Session expired
                 metrics.Add(new UsageMetric { Name = "Session Expired", TotalQuota = 100, RemainingQuota = 0 });
                 return metrics;
             }
 
-            // TODO: Parse the actual JSON response for usage limits.
-            // For now, we simulate a successful scrape to show it works:
+            var orgsJson = await orgsResponse.Content.ReadAsStringAsync();
+            using var orgsDoc = System.Text.Json.JsonDocument.Parse(orgsJson);
+            var firstOrgId = orgsDoc.RootElement[0].GetProperty("uuid").GetString();
+
+            // 2. Fetch Usage
+            var usageJson = await _httpClient.GetStringAsync($"https://claude.ai/api/organizations/{firstOrgId}/usage");
+            
+            // Dump for debugging so we can see the exact schema
+            try { System.IO.File.WriteAllText("claude_usage_dump.json", usageJson); } catch { }
+
             metrics.Add(new UsageMetric
             {
-                Name = "Claude Messages",
+                Name = "Claude Limits",
                 TotalQuota = 100,
-                RemainingQuota = 87, // Fake parsed data
-                ResetTime = DateTime.Now.AddHours(3)
+                RemainingQuota = 100, // Fake until we parse
+                ResetTime = DateTime.Now.AddHours(1)
             });
         }
         catch (Exception ex)

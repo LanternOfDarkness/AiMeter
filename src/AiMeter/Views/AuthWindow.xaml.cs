@@ -29,16 +29,42 @@ public partial class AuthWindow : Window
         var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
         await webView.EnsureCoreWebView2Async(env);
         
-        webView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
+        webView.CoreWebView2.SourceChanged += CoreWebView2_SourceChanged;
+        webView.CoreWebView2.WebResourceResponseReceived += CoreWebView2_WebResourceResponseReceived;
         webView.Source = new Uri("https://claude.ai/login");
     }
 
-    private async void CoreWebView2_NavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+    private void CoreWebView2_WebResourceResponseReceived(object? sender, CoreWebView2WebResourceResponseReceivedEventArgs e)
     {
-        if (webView.Source.ToString().Contains("claude.ai/chats"))
+        var uri = e.Request.Uri.ToLower();
+        if (uri.Contains("api") && (uri.Contains("limit") || uri.Contains("usage") || uri.Contains("organizations") || uri.Contains("stats") || uri.Contains("chat")))
         {
-            // Login successful
+            try
+            {
+                System.IO.File.AppendAllText("claude_api_logs.txt", $"{DateTime.Now}: {e.Request.Method} {e.Request.Uri}\n");
+            }
+            catch { }
+        }
+    }
+
+    private async void CoreWebView2_SourceChanged(object? sender, CoreWebView2SourceChangedEventArgs e)
+    {
+        var url = webView.Source.ToString().ToLower();
+        if (url.Contains("claude.ai") && !url.Contains("/login"))
+        {
+            // Potential Login successful
             var cookies = await webView.CoreWebView2.CookieManager.GetCookiesAsync("https://claude.ai");
+            
+            try
+            {
+                System.IO.File.AppendAllText("claude_api_logs.txt", $"\n--- NAVIGATED TO {url} ---\n");
+                foreach (var c in cookies)
+                {
+                    System.IO.File.AppendAllText("claude_api_logs.txt", $"COOKIE: {c.Name}\n");
+                }
+            }
+            catch { }
+
             if (cookies.Any(c => c.Name == "sessionKey"))
             {
                 var cookieString = string.Join("; ", cookies.Select(c => $"{c.Name}={c.Value}"));
