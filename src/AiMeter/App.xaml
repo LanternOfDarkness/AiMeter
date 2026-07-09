@@ -8,6 +8,8 @@
         <!-- Tray Icon Resource -->
         <tb:TaskbarIcon x:Key="TrayIcon"
                         ToolTipText="AiMeter"
+                        NoLeftClickDelay="True"
+                        LeftClickCommand="{Binding ShowWidgetCommand}"
                         DoubleClickCommand="{Binding ShowSettingsCommand}">
             <tb:TaskbarIcon.ContextMenu>
                 <ContextMenu>

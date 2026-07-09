@@ -6,42 +6,99 @@
         xmlns:controls="clr-namespace:AiMeter.Controls"
         xmlns:converters="clr-namespace:AiMeter.Converters"
         xmlns:viewModels="clr-namespace:AiMeter.ViewModels"
+        xmlns:models="clr-namespace:AiMeter.Models"
         mc:Ignorable="d"
         Title="AiMeter Widget" Width="Auto" SizeToContent="WidthAndHeight"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False"
         MouseLeftButtonDown="Window_MouseLeftButtonDown">
-    
+
     <Window.Resources>
         <converters:QuotaToColorConverter x:Key="QuotaToColorConverter" />
+        <converters:ResetTimeConverter x:Key="ResetTimeConverter" />
+        <converters:PercentageToWidthConverter x:Key="PercentageToWidthConverter" />
+        <converters:EnumToVisibilityConverter x:Key="EnumToVisibilityConverter" />
     </Window.Resources>
 
     <Border Background="#99000000" CornerRadius="12" Margin="10" Padding="15,10,15,10" Opacity="{Binding Config.WidgetOpacity}">
-        <!-- Optional Drop Shadow -->
         <Border.Effect>
             <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.5" />
         </Border.Effect>
-        
-        <ItemsControl ItemsSource="{Binding Metrics}">
-            <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal" />
-                </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <StackPanel Margin="12,0,12,0" ToolTip="{Binding Name}">
-                        <controls:CircularProgress Size="64" StrokeThickness="5"
-                                                   Percentage="{Binding RemainingPercentage}"
-                                                   ValueText="{Binding RemainingQuota}"
-                                                   ForegroundBrush="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}" />
-                        <TextBlock Text="{Binding Name}" Foreground="White" 
-                                   HorizontalAlignment="Center" Margin="0,8,0,0" FontSize="12" MaxWidth="80" TextTrimming="CharacterEllipsis"/>
-                        <TextBlock Text="{Binding ResetTimeText}" Foreground="#AAAAAA" 
-                                   HorizontalAlignment="Center" Margin="0,2,0,0" FontSize="10" />
-                    </StackPanel>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
+
+        <DockPanel>
+            <!-- Title bar: format toggle + hide -->
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,4">
+                <Button Content="&#8645;" ToolTip="Switch widget layout" Command="{Binding ToggleLayoutCommand}"
+                        Width="20" Height="20" Padding="0" Margin="0,0,4,0"
+                        Background="Transparent" BorderThickness="0" Foreground="#AAAAAA" Cursor="Hand" FontSize="12" />
+                <Button Content="&#10005;" ToolTip="Hide widget" Command="{Binding HideCommand}"
+                        CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
+                        Width="20" Height="20" Padding="0"
+                        Background="Transparent" BorderThickness="0" Foreground="#AAAAAA" Cursor="Hand" FontSize="12" />
+            </StackPanel>
+
+            <!-- Detailed format: circular rings -->
+            <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Metrics}"
+                          Visibility="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Detailed}}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="12,0,12,0" ToolTip="{Binding Name}">
+                            <controls:CircularProgress Size="64" StrokeThickness="5"
+                                                       Percentage="{Binding RemainingPercentage}"
+                                                       ValueText="{Binding RemainingQuota}"
+                                                       ForegroundBrush="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}" />
+                            <TextBlock Text="{Binding Name}" Foreground="White"
+                                       HorizontalAlignment="Center" Margin="0,8,0,0" FontSize="12" MaxWidth="80" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Foreground="#AAAAAA" HorizontalAlignment="Center" Margin="0,2,0,0" FontSize="10">
+                                <TextBlock.Text>
+                                    <MultiBinding Converter="{StaticResource ResetTimeConverter}">
+                                        <Binding Path="ResetTime" />
+                                        <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Compact format: thin bars -->
+            <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Metrics}"
+                          Visibility="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Compact}}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Vertical" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,4,0,4" ToolTip="{Binding Name}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="76" />
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="40" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="White" FontSize="11"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+
+                            <Border Grid.Column="1" Height="6" CornerRadius="3" Background="#33FFFFFF" VerticalAlignment="Center">
+                                <Border HorizontalAlignment="Left" CornerRadius="3"
+                                        Width="{Binding RemainingPercentage, Converter={StaticResource PercentageToWidthConverter}, ConverterParameter=120}"
+                                        Background="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}" />
+                            </Border>
+
+                            <TextBlock Grid.Column="2" Text="{Binding RemainingPercentage, StringFormat={}{0:0}%}"
+                                       Foreground="#CCCCCC" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </DockPanel>
     </Border>
 </Window>

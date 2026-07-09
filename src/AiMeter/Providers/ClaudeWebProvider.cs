@@ -1,13 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Security.Cryptography;
-using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
-using AiMeter.Managers;
 using AiMeter.Models;
+using AiMeter.Services;
 
 namespace AiMeter.Providers;
 
@@ -15,78 +11,82 @@ public class ClaudeWebProvider : IProvider
 {
     public string Name => "Claude Web";
 
-    private readonly ISettingsManager _settingsManager;
-    private readonly HttpClient _httpClient;
-    private readonly CookieContainer _cookieContainer;
+    private readonly IClaudeSession _session;
+    private readonly IClaudeApiClient _apiClient;
 
-    public ClaudeWebProvider(ISettingsManager settingsManager)
+    public ClaudeWebProvider(IClaudeSession session, IClaudeApiClient apiClient)
     {
-        _settingsManager = settingsManager;
-        
-        _cookieContainer = new CookieContainer();
-        var handler = new HttpClientHandler { CookieContainer = _cookieContainer };
-        _httpClient = new HttpClient(handler);
-        _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36");
+        _session = session;
+        _apiClient = apiClient;
     }
 
     public async Task<IReadOnlyList<UsageMetric>> GetMetricsAsync()
     {
         var metrics = new List<UsageMetric>();
-        
-        if (string.IsNullOrEmpty(_settingsManager.Current.EncryptedCookies))
+
+        if (!_session.HasSession)
         {
-            // Not logged in
             metrics.Add(new UsageMetric { Name = "Auth Required", TotalQuota = 100, RemainingQuota = 0 });
             return metrics;
         }
 
         try
         {
-            // Decrypt cookies
-            var encryptedBytes = Convert.FromBase64String(_settingsManager.Current.EncryptedCookies);
-            var plainBytes = ProtectedData.Unprotect(encryptedBytes, null, DataProtectionScope.CurrentUser);
-            var cookieString = Encoding.UTF8.GetString(plainBytes);
-
-            var uri = new Uri("https://claude.ai");
-            foreach (var cookiePart in cookieString.Split(';'))
+            var (orgsStatus, orgsBody) = await _apiClient.GetAsync("/api/organizations");
+            if (orgsStatus is 401 or 403)
             {
-                var parts = cookiePart.Split('=', 2);
-                if (parts.Length == 2)
-                {
-                    _cookieContainer.Add(uri, new Cookie(parts[0].Trim(), parts[1].Trim()));
-                }
-            }
-
-            // 1. Fetch Organizations
-            var orgsResponse = await _httpClient.GetAsync("https://claude.ai/api/organizations");
-            if (orgsResponse.StatusCode == HttpStatusCode.Unauthorized || orgsResponse.StatusCode == HttpStatusCode.Forbidden)
-            {
+                _session.Clear();
                 metrics.Add(new UsageMetric { Name = "Session Expired", TotalQuota = 100, RemainingQuota = 0 });
                 return metrics;
             }
+            if (orgsStatus != 200 || orgsBody is null)
+            {
+                metrics.Add(new UsageMetric { Name = "Error Fetching", TotalQuota = 100, RemainingQuota = 0 });
+                return metrics;
+            }
 
-            var orgsJson = await orgsResponse.Content.ReadAsStringAsync();
-            using var orgsDoc = System.Text.Json.JsonDocument.Parse(orgsJson);
-            var firstOrgId = orgsDoc.RootElement[0].GetProperty("uuid").GetString();
+            using var orgsDoc = JsonDocument.Parse(orgsBody);
+            var orgId = orgsDoc.RootElement[0].GetProperty("uuid").GetString();
 
-            // 2. Fetch Usage
-            var usageJson = await _httpClient.GetStringAsync($"https://claude.ai/api/organizations/{firstOrgId}/usage");
-            
-            // Dump for debugging so we can see the exact schema
-            try { System.IO.File.WriteAllText("claude_usage_dump.json", usageJson); } catch { }
+            var (usageStatus, usageBody) = await _apiClient.GetAsync($"/api/organizations/{orgId}/usage");
+            if (usageStatus != 200 || usageBody is null)
+            {
+                metrics.Add(new UsageMetric { Name = "Error Fetching", TotalQuota = 100, RemainingQuota = 0 });
+                return metrics;
+            }
+
+#if DEBUG
+            try
+            {
+                var dumpPath = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "AiMeter", "usage_schema_debug.json");
+                System.IO.File.WriteAllText(dumpPath, usageBody);
+            }
+            catch { }
+#endif
 
             metrics.Add(new UsageMetric
             {
                 Name = "Claude Limits",
                 TotalQuota = 100,
-                RemainingQuota = 100, // Fake until we parse
+                RemainingQuota = 100, // Fake until the real usage schema is parsed
                 ResetTime = DateTime.Now.AddHours(1)
             });
         }
         catch (Exception ex)
         {
-            metrics.Add(new UsageMetric { Name = "Error", TotalQuota = 100, RemainingQuota = 0 });
-            Console.WriteLine(ex.Message);
+#if DEBUG
+            try
+            {
+                var errPath = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "AiMeter", "claude_api_debug.log");
+                System.IO.File.AppendAllText(errPath, $"{DateTime.Now:HH:mm:ss.fff} ClaudeWebProvider EXCEPTION: {ex}\n");
+            }
+            catch { }
+#endif
+            metrics.Add(new UsageMetric { Name = "Error Fetching", TotalQuota = 100, RemainingQuota = 0 });
         }
 
         return metrics;

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
 using AiMeter.Models;
 
@@ -16,9 +17,9 @@ public class SettingsManager : ISettingsManager
         var appDataFolder = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var appFolder = Path.Combine(appDataFolder, "AiMeter");
         Directory.CreateDirectory(appFolder);
-        
+
         _settingsFilePath = Path.Combine(appFolder, "settings.json");
-        
+
         Current = new AppConfig();
         Load();
     }
@@ -33,12 +34,12 @@ public class SettingsManager : ISettingsManager
                 var loadedConfig = JsonSerializer.Deserialize<AppConfig>(json);
                 if (loadedConfig != null)
                 {
-                    Current.WidgetOpacity = loadedConfig.WidgetOpacity;
-                    Current.PollingIntervalSeconds = loadedConfig.PollingIntervalSeconds;
-                    Current.EncryptedCookies = loadedConfig.EncryptedCookies;
-                    if (loadedConfig.SelectedMetrics != null)
+                    // Populate the existing singleton in place (bound to the UI) so that
+                    // adding a new setting never requires touching this method again.
+                    foreach (var property in typeof(AppConfig).GetProperties(BindingFlags.Public | BindingFlags.Instance))
                     {
-                        Current.SelectedMetrics = loadedConfig.SelectedMetrics;
+                        if (!property.CanRead || !property.CanWrite) continue;
+                        property.SetValue(Current, property.GetValue(loadedConfig));
                     }
                 }
             }

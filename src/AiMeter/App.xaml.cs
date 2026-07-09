@@ -6,6 +6,7 @@ using H.NotifyIcon.Core;
 using AiMeter.ViewModels;
 using AiMeter.Managers;
 using AiMeter.Providers;
+using AiMeter.Services;
 
 namespace AiMeter;
 
@@ -24,9 +25,16 @@ public partial class App : Application
                 // Register Managers
                 services.AddSingleton<IProviderManager, ProviderManager>();
                 services.AddSingleton<ISettingsManager, SettingsManager>();
-                
+                services.AddSingleton<IClaudeSession, ClaudeSession>();
+                services.AddSingleton<IClaudeApiClient, ClaudeApiClient>();
+
                 // Register Providers
                 services.AddTransient<IProvider, ClaudeWebProvider>();
+#if DEBUG
+                // A second adapter keeps the IProvider seam real and gives the manager
+                // deterministic data to test/demo against, without shipping fake data.
+                services.AddTransient<IProvider, MockProvider>();
+#endif
 
                 // Register ViewModels
                 services.AddSingleton<TrayViewModel>();
@@ -44,7 +52,7 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         await _host!.StartAsync();
-        
+
         // Start monitoring usage
         var providerManager = _host.Services.GetRequiredService<IProviderManager>();
         await providerManager.StartAsync();
@@ -67,11 +75,18 @@ public partial class App : Application
             _notifyIcon.DataContext = _host.Services.GetRequiredService<TrayViewModel>();
             _notifyIcon.ForceCreate();
         }
+
+        providerManager.AlertRaised += (s, alert) =>
+        {
+            _notifyIcon?.ShowNotification(alert.Title, alert.Message, NotificationIcon.Info);
+        };
     }
 
     protected override async void OnExit(ExitEventArgs e)
     {
         _notifyIcon?.Dispose();
+
+        (_host!.Services.GetService<IClaudeApiClient>() as IDisposable)?.Dispose();
 
         await _host!.StopAsync();
         _host.Dispose();
