@@ -30,13 +30,13 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                    <StackPanel Margin="10,0,10,0" ToolTip="{Binding Name}">
-                        <controls:CircularProgress Size="60" StrokeThickness="6"
+                    <StackPanel Margin="12,0,12,0" ToolTip="{Binding Name}">
+                        <controls:CircularProgress Size="64" StrokeThickness="5"
                                                    Percentage="{Binding RemainingPercentage}"
                                                    ValueText="{Binding RemainingQuota}"
                                                    ForegroundBrush="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}" />
                         <TextBlock Text="{Binding Name}" Foreground="White" 
-                                   HorizontalAlignment="Center" Margin="0,5,0,0" FontSize="11" MaxWidth="70" TextTrimming="CharacterEllipsis"/>
+                                   HorizontalAlignment="Center" Margin="0,8,0,0" FontSize="12" MaxWidth="80" TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>

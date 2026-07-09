@@ -5,9 +5,10 @@
              Height="{Binding Size, RelativeSource={RelativeSource AncestorType=UserControl}}">
     <Grid>
         <!-- Background Track -->
-        <Ellipse Stroke="{Binding TrackBrush, RelativeSource={RelativeSource AncestorType=UserControl}}"
+        <Ellipse x:Name="PART_TrackEllipse"
+                 Stroke="{Binding TrackBrush, RelativeSource={RelativeSource AncestorType=UserControl}}"
                  StrokeThickness="{Binding StrokeThickness, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                 Margin="{Binding StrokeThickness, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                 HorizontalAlignment="Center" VerticalAlignment="Center" />
 
         <!-- Foreground Track -->
         <Path Stroke="{Binding ForegroundBrush, RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -24,10 +25,11 @@
         </Path>
         
         <!-- Center Text -->
-        <Viewbox Margin="15">
-            <TextBlock Text="{Binding ValueText, RelativeSource={RelativeSource AncestorType=UserControl}}" 
-                       Foreground="{Binding ForegroundBrush, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                       FontWeight="Bold" />
-        </Viewbox>
+        <TextBlock Text="{Binding ValueText, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                   Foreground="White"
+                   FontWeight="SemiBold"
+                   FontSize="16"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center" />
     </Grid>
 </UserControl>
