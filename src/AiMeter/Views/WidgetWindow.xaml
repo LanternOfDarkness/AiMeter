@@ -16,7 +16,7 @@
         <converters:QuotaToColorConverter x:Key="QuotaToColorConverter" />
     </Window.Resources>
 
-    <Border Background="#99000000" CornerRadius="12" Margin="10" Padding="15,10,15,10">
+    <Border Background="#99000000" CornerRadius="12" Margin="10" Padding="15,10,15,10" Opacity="{Binding Config.WidgetOpacity}">
         <!-- Optional Drop Shadow -->
         <Border.Effect>
             <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.5" />

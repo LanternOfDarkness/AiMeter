@@ -12,14 +12,16 @@ namespace AiMeter.Managers;
 public partial class ProviderManager : ObservableObject, IProviderManager
 {
     private readonly IEnumerable<IProvider> _providers;
+    private readonly ISettingsManager _settingsManager;
     private PeriodicTimer? _timer;
     private CancellationTokenSource? _cts;
 
     public ObservableCollection<UsageMetric> Metrics { get; } = new();
 
-    public ProviderManager(IEnumerable<IProvider> providers)
+    public ProviderManager(IEnumerable<IProvider> providers, ISettingsManager settingsManager)
     {
         _providers = providers;
+        _settingsManager = settingsManager;
     }
 
     public Task StartAsync()
@@ -27,7 +29,7 @@ public partial class ProviderManager : ObservableObject, IProviderManager
         if (_cts != null) return Task.CompletedTask;
 
         _cts = new CancellationTokenSource();
-        _timer = new PeriodicTimer(TimeSpan.FromSeconds(60));
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(_settingsManager.Current.PollingIntervalSeconds));
 
         // Start polling in background
         _ = PollLoopAsync(_cts.Token);

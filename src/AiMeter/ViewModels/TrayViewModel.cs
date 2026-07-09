@@ -1,9 +1,11 @@
+using System;
 using System.Windows;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AiMeter.Managers;
 using AiMeter.Views;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AiMeter.ViewModels;
 
@@ -11,11 +13,13 @@ public partial class TrayViewModel : ObservableObject
 {
     private readonly IProviderManager _providerManager;
     private readonly WidgetWindow _widgetWindow;
+    private readonly IServiceProvider _serviceProvider;
 
-    public TrayViewModel(IProviderManager providerManager, WidgetWindow widgetWindow)
+    public TrayViewModel(IProviderManager providerManager, WidgetWindow widgetWindow, IServiceProvider serviceProvider)
     {
         _providerManager = providerManager;
         _widgetWindow = widgetWindow;
+        _serviceProvider = serviceProvider;
     }
 
     [RelayCommand]
@@ -32,8 +36,8 @@ public partial class TrayViewModel : ObservableObject
     [RelayCommand]
     private void ShowSettings()
     {
-        // TODO: Show settings window
-        MessageBox.Show("Show Settings command invoked", "AiMeter");
+        var settingsWindow = _serviceProvider.GetRequiredService<SettingsWindow>();
+        settingsWindow.Show();
     }
 
     [RelayCommand]

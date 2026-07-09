@@ -21,8 +21,9 @@ public partial class App : Application
         _host = Host.CreateDefaultBuilder()
             .ConfigureServices((context, services) =>
             {
-                // Register Core Services
+                // Register Managers
                 services.AddSingleton<IProviderManager, ProviderManager>();
+                services.AddSingleton<ISettingsManager, SettingsManager>();
                 
                 // Register Providers
                 services.AddTransient<IProvider, MockProvider>();
@@ -30,9 +31,11 @@ public partial class App : Application
                 // Register ViewModels
                 services.AddSingleton<TrayViewModel>();
                 services.AddSingleton<WidgetViewModel>();
+                services.AddTransient<SettingsViewModel>();
 
                 // Register Views
                 services.AddSingleton<Views.WidgetWindow>();
+                services.AddTransient<Views.SettingsWindow>();
             })
             .Build();
     }
