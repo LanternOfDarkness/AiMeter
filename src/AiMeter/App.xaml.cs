@@ -26,7 +26,7 @@ public partial class App : Application
                 services.AddSingleton<ISettingsManager, SettingsManager>();
                 
                 // Register Providers
-                services.AddTransient<IProvider, MockProvider>();
+                services.AddTransient<IProvider, ClaudeWebProvider>();
 
                 // Register ViewModels
                 services.AddSingleton<TrayViewModel>();
@@ -36,6 +36,7 @@ public partial class App : Application
                 // Register Views
                 services.AddSingleton<Views.WidgetWindow>();
                 services.AddTransient<Views.SettingsWindow>();
+                services.AddTransient<Views.AuthWindow>();
             })
             .Build();
     }

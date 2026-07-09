@@ -7,7 +7,7 @@
         xmlns:converters="clr-namespace:AiMeter.Converters"
         xmlns:viewModels="clr-namespace:AiMeter.ViewModels"
         mc:Ignorable="d"
-        Title="AiMeter Widget" Height="120" Width="Auto" SizeToContent="Width"
+        Title="AiMeter Widget" Width="Auto" SizeToContent="WidthAndHeight"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False"
         MouseLeftButtonDown="Window_MouseLeftButtonDown">
@@ -37,6 +37,8 @@
                                                    ForegroundBrush="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}" />
                         <TextBlock Text="{Binding Name}" Foreground="White" 
                                    HorizontalAlignment="Center" Margin="0,8,0,0" FontSize="12" MaxWidth="80" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding ResetTimeText}" Foreground="#AAAAAA" 
+                                   HorizontalAlignment="Center" Margin="0,2,0,0" FontSize="10" />
                     </StackPanel>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>

@@ -86,13 +86,14 @@ public partial class CircularProgress : UserControl
 
     private void UpdateArc()
     {
-        if (PART_PathFigure == null || PART_ArcSegment == null || PART_TrackEllipse == null) return;
+        if (PART_PathFigure == null || PART_ArcSegment == null || PART_TrackGeometry == null) return;
 
         double radius = (Size - StrokeThickness) / 2;
         if (radius <= 0) return;
 
-        PART_TrackEllipse.Width = Size - StrokeThickness;
-        PART_TrackEllipse.Height = Size - StrokeThickness;
+        PART_TrackGeometry.RadiusX = radius;
+        PART_TrackGeometry.RadiusY = radius;
+        PART_TrackGeometry.Center = new Point(Size / 2, Size / 2);
 
         double angle = (Percentage / 100.0) * 360.0;
         // WPF ArcSegment fails if angle is exactly 360

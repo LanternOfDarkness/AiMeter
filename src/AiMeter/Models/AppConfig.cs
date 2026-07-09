@@ -9,4 +9,7 @@ public partial class AppConfig : ObservableObject
 
     [ObservableProperty]
     private int _pollingIntervalSeconds = 60;
+
+    [ObservableProperty]
+    private string? _encryptedCookies;
 }

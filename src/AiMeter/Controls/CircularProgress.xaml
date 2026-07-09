@@ -5,10 +5,12 @@
              Height="{Binding Size, RelativeSource={RelativeSource AncestorType=UserControl}}">
     <Grid>
         <!-- Background Track -->
-        <Ellipse x:Name="PART_TrackEllipse"
-                 Stroke="{Binding TrackBrush, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                 StrokeThickness="{Binding StrokeThickness, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <Path Stroke="{Binding TrackBrush, RelativeSource={RelativeSource AncestorType=UserControl}}"
+              StrokeThickness="{Binding StrokeThickness, RelativeSource={RelativeSource AncestorType=UserControl}}">
+            <Path.Data>
+                <EllipseGeometry x:Name="PART_TrackGeometry" />
+            </Path.Data>
+        </Path>
 
         <!-- Foreground Track -->
         <Path Stroke="{Binding ForegroundBrush, RelativeSource={RelativeSource AncestorType=UserControl}}"

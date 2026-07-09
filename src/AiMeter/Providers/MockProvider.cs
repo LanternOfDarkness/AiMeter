@@ -11,29 +11,29 @@ public class MockProvider : IProvider
 
     public Task<IReadOnlyList<UsageMetric>> GetMetricsAsync()
     {
-        var random = new Random();
+        var _random = new Random();
         var metrics = new List<UsageMetric>
         {
             new UsageMetric
             {
                 Name = "Claude Messages",
                 TotalQuota = 100,
-                RemainingQuota = random.Next(0, 101),
-                ResetTime = DateTime.Now.AddHours(5)
+                RemainingQuota = _random.Next(0, 100),
+                ResetTime = DateTime.Now.AddHours(4).AddMinutes(15)
             },
             new UsageMetric
             {
-                Name = "Claude Max Usage",
+                Name = "Claude Max",
                 TotalQuota = 50,
-                RemainingQuota = random.Next(40, 51),
-                ResetTime = DateTime.Now.AddDays(7)
+                RemainingQuota = _random.Next(0, 50),
+                ResetTime = DateTime.Now.AddMinutes(45)
             },
             new UsageMetric
             {
                 Name = "GPT-4",
-                TotalQuota = 1000,
-                RemainingQuota = random.Next(100, 1001),
-                ResetTime = DateTime.Now.AddHours(4)
+                TotalQuota = 500,
+                RemainingQuota = _random.Next(0, 500),
+                ResetTime = DateTime.Now.AddHours(2)
             }
         };
 

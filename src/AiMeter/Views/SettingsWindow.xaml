@@ -23,6 +23,12 @@
             <Slider Minimum="0.1" Maximum="1.0" Value="{Binding Config.WidgetOpacity}" Width="250" VerticalAlignment="Center" />
             <TextBlock Text="{Binding Config.WidgetOpacity, StringFormat={}{0:P0}}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
         </StackPanel>
+        
+        <!-- Authentication -->
+        <StackPanel Grid.Row="2" Orientation="Vertical">
+            <Button Content="Log into Claude" Command="{Binding LoginToClaudeCommand}" Width="150" Height="30" HorizontalAlignment="Left" Background="#5B5B5B" Foreground="White" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" />
+            <TextBlock Text="Requires logging into Claude.ai to fetch web limits." Foreground="#888" FontSize="11" Margin="0,5,0,0" />
+        </StackPanel>
 
         <!-- Buttons -->
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
