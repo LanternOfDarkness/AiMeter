@@ -1,0 +1,24 @@
+<Application x:Class="AiMeter.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:AiMeter"
+             xmlns:tb="http://www.hardcodet.net/taskbar"
+             xmlns:viewModels="clr-namespace:AiMeter.ViewModels">
+    <Application.Resources>
+        <!-- Tray Icon Resource -->
+        <tb:TaskbarIcon x:Key="TrayIcon"
+                        ToolTipText="AiMeter">
+            <tb:TaskbarIcon.DataContext>
+                <viewModels:TrayViewModel />
+            </tb:TaskbarIcon.DataContext>
+            <tb:TaskbarIcon.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Show Widget" Command="{Binding ShowWidgetCommand}" />
+                    <MenuItem Header="Settings" Command="{Binding ShowSettingsCommand}" />
+                    <Separator />
+                    <MenuItem Header="Exit" Command="{Binding ExitCommand}" />
+                </ContextMenu>
+            </tb:TaskbarIcon.ContextMenu>
+        </tb:TaskbarIcon>
+    </Application.Resources>
+</Application>
