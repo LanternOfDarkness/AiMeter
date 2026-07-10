@@ -8,7 +8,6 @@ using AiMeter.Models;
 using AiMeter.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace AiMeter.ViewModels;
 
@@ -16,20 +15,31 @@ public partial class WidgetViewModel : ObservableObject
 {
     private readonly IProviderManager _providerManager;
     private readonly ISettingsManager _settingsManager;
-    private readonly IServiceProvider _serviceProvider;
+    private readonly SettingsWindow _settingsWindow;
     private readonly DispatcherTimer _clockTimer;
 
     public ObservableCollection<UsageMetric> Metrics => _providerManager.Metrics;
     public AppConfig Config => _settingsManager.Current;
+    public bool HasFetchedOnce => _providerManager.HasFetchedOnce;
 
     [ObservableProperty]
     private DateTime _now = DateTime.Now;
 
-    public WidgetViewModel(IProviderManager providerManager, ISettingsManager settingsManager, IServiceProvider serviceProvider)
+    public WidgetViewModel(IProviderManager providerManager, ISettingsManager settingsManager, SettingsWindow settingsWindow)
     {
         _providerManager = providerManager;
         _settingsManager = settingsManager;
-        _serviceProvider = serviceProvider;
+        _settingsWindow = settingsWindow;
+
+        // Relay HasFetchedOnce changes from the manager so the widget's skeleton/real
+        // toggle updates via binding (the manager owns the source of truth).
+        _providerManager.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(HasFetchedOnce))
+            {
+                OnPropertyChanged(nameof(HasFetchedOnce));
+            }
+        };
 
         // Ticks independently of provider polling so reset countdowns stay live.
         _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
@@ -44,7 +54,17 @@ public partial class WidgetViewModel : ObservableObject
         // PlacementTarget (the root Border), so resolve the owning window in that case.
         var window = target as Window
             ?? (target is DependencyObject dep ? Window.GetWindow(dep) : null);
-        window?.Hide();
+
+        // Route through HideByUser so the self-heal timer knows this was an intentional
+        // hide and does not resurrect the widget a few seconds later.
+        if (window is WidgetWindow widgetWindow)
+        {
+            widgetWindow.HideByUser();
+        }
+        else
+        {
+            window?.Hide();
+        }
     }
 
     [RelayCommand]
@@ -69,7 +89,6 @@ public partial class WidgetViewModel : ObservableObject
     [RelayCommand]
     private void OpenSettings()
     {
-        var settingsWindow = _serviceProvider.GetRequiredService<SettingsWindow>();
-        settingsWindow.Show();
+        _settingsWindow.ShowOrActivate();
     }
 }

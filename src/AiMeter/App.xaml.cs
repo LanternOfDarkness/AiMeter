@@ -1,6 +1,7 @@
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using H.NotifyIcon;
 using H.NotifyIcon.Core;
 using AiMeter.ViewModels;
@@ -20,6 +21,7 @@ public partial class App : Application
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
         _host = Host.CreateDefaultBuilder()
+            .ConfigureLogging(logging => logging.AddFileLogger())
             .ConfigureServices((context, services) =>
             {
                 // Register Managers
@@ -30,20 +32,15 @@ public partial class App : Application
 
                 // Register Providers
                 services.AddTransient<IProvider, ClaudeWebProvider>();
-#if DEBUG
-                // A second adapter keeps the IProvider seam real and gives the manager
-                // deterministic data to test/demo against, without shipping fake data.
-                services.AddTransient<IProvider, MockProvider>();
-#endif
 
                 // Register ViewModels
                 services.AddSingleton<TrayViewModel>();
                 services.AddSingleton<WidgetViewModel>();
-                services.AddTransient<SettingsViewModel>();
+                services.AddSingleton<SettingsViewModel>();
 
                 // Register Views
                 services.AddSingleton<Views.WidgetWindow>();
-                services.AddTransient<Views.SettingsWindow>();
+                services.AddSingleton<Views.SettingsWindow>();
                 services.AddTransient<Views.AuthWindow>();
             })
             .Build();
@@ -65,12 +62,12 @@ public partial class App : Application
         _notifyIcon = (TaskbarIcon)FindResource("TrayIcon");
         if (_notifyIcon != null)
         {
-            var streamInfo = Application.GetResourceStream(new Uri("pack://application:,,,/app.png"));
-            if (streamInfo != null)
+            // Load the .ico directly. Going PNG -> GetHicon() loses alpha, producing an
+            // opaque tray background on dark taskbars; the .ico preserves transparency.
+            var iconStream = Application.GetResourceStream(new Uri("pack://application:,,,/app.ico"));
+            if (iconStream != null)
             {
-                using var bmp = new System.Drawing.Bitmap(streamInfo.Stream);
-                var hIcon = bmp.GetHicon();
-                _notifyIcon.Icon = System.Drawing.Icon.FromHandle(hIcon);
+                _notifyIcon.Icon = new System.Drawing.Icon(iconStream.Stream);
             }
             _notifyIcon.DataContext = _host.Services.GetRequiredService<TrayViewModel>();
             _notifyIcon.ForceCreate();

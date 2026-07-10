@@ -4,8 +4,10 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using AiMeter.Models;
 using AiMeter.ViewModels;
+using AiMeter.Windowing;
 
 namespace AiMeter.Views;
 
@@ -14,6 +16,25 @@ public partial class WidgetWindow : Window
     private readonly WidgetViewModel _viewModel;
     private bool _isHovered;
     private bool _positionApplied;
+
+    /// <summary>
+    /// True when the user deliberately hid the widget (via the Hide command). Lets the
+    /// self-heal timer distinguish "user wants it gone" from "something external made it
+    /// disappear" (e.g. the Snipping Tool's own topmost overlay hiding us mid-screenshot).
+    /// </summary>
+    public bool IsUserHidden { get; internal set; }
+
+    /// <summary>User-initiated hide: marks the widget as intentionally hidden.</summary>
+    public void HideByUser()
+    {
+        IsUserHidden = true;
+        Hide();
+    }
+
+    // Self-heal: layered on top of the event-driven foreground hook, because the hook can
+    // only re-assert topmost while already visible — it cannot recover a window that some
+    // external process hid. A low-frequency poll re-shows and re-asserts in that case.
+    private DispatcherTimer? _selfHealTimer;
 
     // Foreground-change hook: re-assert topmost whenever any window (incl. the taskbar)
     // becomes foreground, so the widget never gets buried by the shell. Event-driven, so
@@ -42,6 +63,27 @@ public partial class WidgetWindow : Window
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
+    private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
     public WidgetWindow(WidgetViewModel viewModel)
     {
         InitializeComponent();
@@ -53,7 +95,11 @@ public partial class WidgetWindow : Window
         // positioning has to react to size changes, not just the first Loaded.
         Loaded += OnLoaded;
         SizeChanged += (s, e) => KeepOnScreen();
-        Closed += (s, e) => RemoveForegroundHook();
+        Closed += (s, e) =>
+        {
+            _selfHealTimer?.Stop();
+            RemoveForegroundHook();
+        };
 
         // Opacity depends on config (enabled/level) which can change live from the
         // settings slider, plus the transient hover state.
@@ -65,6 +111,7 @@ public partial class WidgetWindow : Window
         ApplyInitialPosition();
         ApplyOpacity();
         InstallForegroundHook();
+        StartSelfHealTimer();
     }
 
     private void InstallForegroundHook()
@@ -83,6 +130,25 @@ public partial class WidgetWindow : Window
         UnhookWinEvent(_winEventHook);
         _winEventHook = IntPtr.Zero;
         _winEventProc = null;
+    }
+
+    private void StartSelfHealTimer()
+    {
+        _selfHealTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _selfHealTimer.Tick += OnSelfHealTick;
+        _selfHealTimer.Start();
+    }
+
+    private void OnSelfHealTick(object? sender, EventArgs e)
+    {
+        if (IsUserHidden) return;
+
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        ReassertTopmost();
     }
 
     private void OnForegroundChanged(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
@@ -120,19 +186,54 @@ public partial class WidgetWindow : Window
     }
 
     /// <summary>
-    /// Clamps the current top-left into the work area without re-anchoring, so the
-    /// widget keeps the position the user dragged it to even as its size changes.
+    /// Clamps the current top-left into the work area of the monitor the widget is
+    /// currently on, without re-anchoring, so the widget keeps the position the user
+    /// dragged it to even as its size changes. Clamping against the window's own monitor
+    /// (not just the primary) also stops a widget on a secondary display from snapping back
+    /// to the primary monitor on every size change (layout toggle, metric count change).
     /// </summary>
     private void KeepOnScreen()
     {
         if (!_positionApplied) return;
 
-        var workArea = SystemParameters.WorkArea;
-        var maxLeft = workArea.Right - this.ActualWidth;
-        var maxTop = workArea.Bottom - this.ActualHeight;
+        var bounds = GetWorkAreaForWindow();
+        var (left, top) = ScreenMath.ClampToBounds(
+            this.Left, this.Top, this.ActualWidth, this.ActualHeight,
+            bounds.Left, bounds.Top, bounds.Width, bounds.Height);
 
-        this.Left = System.Math.Max(workArea.Left, System.Math.Min(this.Left, maxLeft));
-        this.Top = System.Math.Max(workArea.Top, System.Math.Min(this.Top, maxTop));
+        this.Left = left;
+        this.Top = top;
+    }
+
+    /// <summary>
+    /// Returns the work area (in WPF DIPs) of the monitor the window currently overlaps,
+    /// via Win32 MonitorFromWindow/GetMonitorInfo so we don't depend on WinForms (which
+    /// would clash with WPF's global usings). Falls back to the primary work area until
+    /// the window has an HWND.
+    /// </summary>
+    private System.Windows.Rect GetWorkAreaForWindow()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return SystemParameters.WorkArea;
+
+        var hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if (hMonitor == IntPtr.Zero) return SystemParameters.WorkArea;
+
+        var info = new MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(hMonitor, ref info)) return SystemParameters.WorkArea;
+
+        var scale = GetDpiScale();
+        return new System.Windows.Rect(
+            info.rcWork.Left / scale.x,
+            info.rcWork.Top / scale.y,
+            (info.rcWork.Right - info.rcWork.Left) / scale.x,
+            (info.rcWork.Bottom - info.rcWork.Top) / scale.y);
+    }
+
+    private (double x, double y) GetDpiScale()
+    {
+        var m = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice;
+        return m.HasValue ? (m.Value.M11, m.Value.M22) : (1.0, 1.0);
     }
 
     private void ReassertTopmost()
@@ -152,6 +253,7 @@ public partial class WidgetWindow : Window
         if (e.ChangedButton == MouseButton.Left)
         {
             DragMove();
+            KeepOnScreen(); // drag can leave the widget partially off-screen; clamp before persisting.
             _viewModel.PersistPosition(this.Left, this.Top);
         }
     }

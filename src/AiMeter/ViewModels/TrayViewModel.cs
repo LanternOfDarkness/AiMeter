@@ -1,11 +1,9 @@
 using System;
 using System.Windows;
-using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AiMeter.Managers;
 using AiMeter.Views;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace AiMeter.ViewModels;
 
@@ -13,18 +11,20 @@ public partial class TrayViewModel : ObservableObject
 {
     private readonly IProviderManager _providerManager;
     private readonly WidgetWindow _widgetWindow;
-    private readonly IServiceProvider _serviceProvider;
+    private readonly SettingsWindow _settingsWindow;
 
-    public TrayViewModel(IProviderManager providerManager, WidgetWindow widgetWindow, IServiceProvider serviceProvider)
+    public TrayViewModel(IProviderManager providerManager, WidgetWindow widgetWindow, SettingsWindow settingsWindow)
     {
         _providerManager = providerManager;
         _widgetWindow = widgetWindow;
-        _serviceProvider = serviceProvider;
+        _settingsWindow = settingsWindow;
     }
 
     [RelayCommand]
     private void ShowWidget()
     {
+        // Re-showing the widget from the tray is intentional, so clear any prior user-hide.
+        _widgetWindow.IsUserHidden = false;
         _widgetWindow.Show();
         if (_widgetWindow.WindowState == WindowState.Minimized)
         {
@@ -36,8 +36,7 @@ public partial class TrayViewModel : ObservableObject
     [RelayCommand]
     private void ShowSettings()
     {
-        var settingsWindow = _serviceProvider.GetRequiredService<SettingsWindow>();
-        settingsWindow.Show();
+        _settingsWindow.ShowOrActivate();
     }
 
     [RelayCommand]

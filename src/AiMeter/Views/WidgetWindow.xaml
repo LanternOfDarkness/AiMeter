@@ -8,18 +8,23 @@
         xmlns:viewModels="clr-namespace:AiMeter.ViewModels"
         xmlns:models="clr-namespace:AiMeter.Models"
         mc:Ignorable="d"
-        Title="AiMeter Widget" Width="Auto" SizeToContent="WidthAndHeight"
+        Title="AiMeter Widget" Width="Auto" SizeToContent="WidthAndHeight" MinWidth="120" MinHeight="120"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False"
         MouseLeftButtonDown="Window_MouseLeftButtonDown">
 
     <Window.Resources>
-        <converters:QuotaToColorConverter x:Key="QuotaToColorConverter" />
-        <converters:ResetTimeConverter x:Key="ResetTimeConverter" />
-        <converters:PercentageToWidthConverter x:Key="PercentageToWidthConverter" />
-        <converters:EnumToVisibilityConverter x:Key="EnumToVisibilityConverter" />
-        <converters:DoubleToThicknessConverter x:Key="DoubleToThicknessConverter" />
-        <converters:OpacityToBackgroundBrushConverter x:Key="OpacityToBackgroundBrushConverter" />
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/Styles/WidgetStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <converters:QuotaToColorConverter x:Key="QuotaToColorConverter" />
+            <converters:ResetTimeConverter x:Key="ResetTimeConverter" />
+            <converters:PercentageToWidthConverter x:Key="PercentageToWidthConverter" />
+            <converters:EnumToVisibilityConverter x:Key="EnumToVisibilityConverter" />
+            <converters:DoubleToThicknessConverter x:Key="DoubleToThicknessConverter" />
+            <converters:OpacityToBackgroundBrushConverter x:Key="OpacityToBackgroundBrushConverter" />
+            <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
 
         <Style x:Key="WidgetIconButton" TargetType="Button">
             <Setter Property="Width" Value="20" />
@@ -32,6 +37,7 @@
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FontSize" Value="12" />
         </Style>
+        </ResourceDictionary>
     </Window.Resources>
 
     <Border x:Name="RootBorder" Background="{Binding Config.BackgroundOpacity, Converter={StaticResource OpacityToBackgroundBrushConverter}}" CornerRadius="10" Margin="6"
@@ -71,34 +77,25 @@
                         Style="{StaticResource WidgetIconButton}" Margin="0" />
             </StackPanel>
 
+            <!-- Skeleton placeholder shown before the first poll completes (Detailed mode only),
+                 sized like one real tile so the window opens at a sensible fixed size. -->
+            <StackPanel DockPanel.Dock="Top" Margin="14,0,14,0"
+                        Visibility="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Detailed}}">
+                <StackPanel Visibility="{Binding HasFetchedOnce, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Opacity="0.45">
+                    <Ellipse Width="68" Height="68" Stroke="#444" StrokeThickness="5" Fill="Transparent" />
+                    <TextBlock Text="loading…" Foreground="#888888" HorizontalAlignment="Center" Margin="0,9,0,0" FontSize="12" />
+                </StackPanel>
+            </StackPanel>
+
             <!-- Detailed format: circular rings -->
-            <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Metrics}"
+<ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Metrics}"
+                          ItemTemplate="{StaticResource DetailedMetricTile}"
                           Visibility="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Detailed}}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <StackPanel Orientation="Horizontal" />
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Margin="12,0,12,0" ToolTip="{Binding Name}">
-                            <controls:CircularProgress Size="64" StrokeThickness="5"
-                                                       Percentage="{Binding RemainingPercentage}"
-                                                       ValueText="{Binding RemainingPercentage, StringFormat={}{0:0}}"
-                                                       ForegroundBrush="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}" />
-                            <TextBlock Text="{Binding Name}" Foreground="White"
-                                       HorizontalAlignment="Center" Margin="0,8,0,0" FontSize="12" MaxWidth="80" TextTrimming="CharacterEllipsis"/>
-                            <TextBlock Foreground="#AAAAAA" HorizontalAlignment="Center" Margin="0,2,0,0" FontSize="10">
-                                <TextBlock.Text>
-                                    <MultiBinding Converter="{StaticResource ResetTimeConverter}">
-                                        <Binding Path="ResetTime" />
-                                        <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
-                                    </MultiBinding>
-                                </TextBlock.Text>
-                            </TextBlock>
-                        </StackPanel>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
             </ItemsControl>
 
             <!-- Compact format: thin bars -->

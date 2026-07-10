@@ -3,17 +3,20 @@ using System.IO;
 using System.Reflection;
 using System.Text.Json;
 using AiMeter.Models;
+using Microsoft.Extensions.Logging;
 
 namespace AiMeter.Managers;
 
 public class SettingsManager : ISettingsManager
 {
     private readonly string _settingsFilePath;
+    private readonly ILogger<SettingsManager>? _logger;
 
     public AppConfig Current { get; private set; }
 
-    public SettingsManager()
+    public SettingsManager(ILogger<SettingsManager>? logger = null)
     {
+        _logger = logger;
         var appDataFolder = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var appFolder = Path.Combine(appDataFolder, "AiMeter");
         Directory.CreateDirectory(appFolder);
@@ -46,7 +49,7 @@ public class SettingsManager : ISettingsManager
             catch (Exception ex)
             {
                 // Fallback to defaults on error
-                Console.WriteLine($"Error loading settings: {ex.Message}");
+                _logger?.LogError(ex, "Error loading settings from {Path}", _settingsFilePath);
             }
         }
     }
@@ -60,7 +63,7 @@ public class SettingsManager : ISettingsManager
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error saving settings: {ex.Message}");
+            _logger?.LogError(ex, "Error saving settings to {Path}", _settingsFilePath);
         }
     }
 }

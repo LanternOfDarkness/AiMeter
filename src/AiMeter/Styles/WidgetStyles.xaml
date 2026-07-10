@@ -1,0 +1,31 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="clr-namespace:AiMeter.Controls"
+                    xmlns:converters="clr-namespace:AiMeter.Converters">
+
+    <converters:QuotaToColorConverter x:Key="QuotaToColorConverter" />
+    <converters:ResetTimeConverter x:Key="ResetTimeConverter" />
+
+    <!-- Detailed (rings) mode: one tile per metric. Extracted from WidgetWindow.xaml so the
+         spacing/typography can be refined in one place and shared if needed. -->
+    <DataTemplate x:Key="DetailedMetricTile">
+        <StackPanel Margin="14,0,14,0" ToolTip="{Binding Name}">
+            <controls:CircularProgress Size="68" StrokeThickness="5"
+                                       Percentage="{Binding RemainingPercentage}"
+                                       ValueText="{Binding RemainingPercentage, StringFormat={}{0:0}}"
+                                       ForegroundBrush="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}" />
+            <TextBlock Text="{Binding Name}" Foreground="White"
+                       HorizontalAlignment="Center" Margin="0,9,0,0" FontSize="12"
+                       MaxWidth="84" TextTrimming="CharacterEllipsis" />
+            <TextBlock Foreground="#AAAAAA" HorizontalAlignment="Center" Margin="0,2,0,0" FontSize="10">
+                <TextBlock.Text>
+                    <MultiBinding Converter="{StaticResource ResetTimeConverter}">
+                        <Binding Path="ResetTime" />
+                        <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
+                    </MultiBinding>
+                </TextBlock.Text>
+            </TextBlock>
+        </StackPanel>
+    </DataTemplate>
+
+</ResourceDictionary>

@@ -60,6 +60,10 @@ This includes widget opacity, layout mode, saved position, selected metrics, pol
 interval, and notification preferences. The embedded browser session lives alongside it in
 `%AppData%\AiMeter\WebView2`.
 
+Diagnostic logs are written daily to `%AppData%\AiMeter\logs\aimeter-{yyyy-MM-dd}.log` and
+capture provider fetch failures, session expiry, and settings load/save errors — useful when
+metrics stop updating with no visible explanation.
+
 ## Architecture
 
 - **.NET 9 · WPF · MVVM** with `CommunityToolkit.Mvvm` and `Microsoft.Extensions.Hosting` DI.

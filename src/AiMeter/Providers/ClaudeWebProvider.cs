@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using AiMeter.Models;
 using AiMeter.Services;
+using Microsoft.Extensions.Logging;
 
 namespace AiMeter.Providers;
 
@@ -13,11 +14,13 @@ public class ClaudeWebProvider : IProvider
 
     private readonly IClaudeSession _session;
     private readonly IClaudeApiClient _apiClient;
+    private readonly ILogger<ClaudeWebProvider> _logger;
 
-    public ClaudeWebProvider(IClaudeSession session, IClaudeApiClient apiClient)
+    public ClaudeWebProvider(IClaudeSession session, IClaudeApiClient apiClient, ILogger<ClaudeWebProvider> logger)
     {
         _session = session;
         _apiClient = apiClient;
+        _logger = logger;
     }
 
     public async Task<IReadOnlyList<UsageMetric>> GetMetricsAsync()
@@ -35,12 +38,14 @@ public class ClaudeWebProvider : IProvider
             var (orgsStatus, orgsBody) = await _apiClient.GetAsync("/api/organizations");
             if (orgsStatus is 401 or 403)
             {
+                _logger.LogWarning("Claude session expired (status {Status}); clearing", orgsStatus);
                 _session.Clear();
                 metrics.Add(new UsageMetric { Name = "Session Expired", TotalQuota = 100, RemainingQuota = 0 });
                 return metrics;
             }
             if (orgsStatus != 200 || orgsBody is null)
             {
+                _logger.LogWarning("Claude orgs request failed with status {Status}", orgsStatus);
                 metrics.Add(new UsageMetric { Name = "Error Fetching", TotalQuota = 100, RemainingQuota = 0 });
                 return metrics;
             }
@@ -51,14 +56,16 @@ public class ClaudeWebProvider : IProvider
             var (usageStatus, usageBody) = await _apiClient.GetAsync($"/api/organizations/{orgId}/usage");
             if (usageStatus != 200 || usageBody is null)
             {
+                _logger.LogWarning("Claude usage request for org {OrgId} failed with status {Status}", orgId, usageStatus);
                 metrics.Add(new UsageMetric { Name = "Error Fetching", TotalQuota = 100, RemainingQuota = 0 });
                 return metrics;
             }
 
             metrics.AddRange(ParseUsage(usageBody));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "Claude usage fetch threw an unhandled exception");
             metrics.Add(new UsageMetric { Name = "Error Fetching", TotalQuota = 100, RemainingQuota = 0 });
         }
 

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using AiMeter.Models;
 using AiMeter.Providers;
+using Microsoft.Extensions.Logging;
 
 namespace AiMeter.Managers;
 
@@ -14,6 +15,7 @@ public partial class ProviderManager : ObservableObject, IProviderManager
 {
     private readonly IEnumerable<IProvider> _providers;
     private readonly ISettingsManager _settingsManager;
+    private readonly ILogger<ProviderManager>? _logger;
     private readonly Dictionary<string, IReadOnlyList<UsageMetric>> _lastGoodByProvider = new();
     private readonly Dictionary<string, UsageMetric> _previousByMetricName = new();
     private PeriodicTimer? _timer;
@@ -23,12 +25,16 @@ public partial class ProviderManager : ObservableObject, IProviderManager
 
     public ObservableCollection<string> KnownMetricNames { get; } = new();
 
+    [ObservableProperty]
+    private bool _hasFetchedOnce;
+
     public event EventHandler<QuotaAlert>? AlertRaised;
 
-    public ProviderManager(IEnumerable<IProvider> providers, ISettingsManager settingsManager)
+    public ProviderManager(IEnumerable<IProvider> providers, ISettingsManager settingsManager, ILogger<ProviderManager>? logger = null)
     {
         _providers = providers;
         _settingsManager = settingsManager;
+        _logger = logger;
     }
 
     public Task StartAsync()
@@ -60,14 +66,41 @@ public partial class ProviderManager : ObservableObject, IProviderManager
             {
                 _lastGoodByProvider[provider.Name] = await provider.GetMetricsAsync();
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // Keep this provider's last-good snapshot; one failing provider
                 // should not blank out the metrics for every other provider.
+                _logger?.LogWarning(ex, "Provider {Provider} fetch failed; keeping last-good snapshot", provider.Name);
             }
         }
 
+        TrackKnownMetricNames();
+        DetectAlerts(SelectedMetrics(), _settingsManager.Current);
+        SyncMetrics(SelectedMetrics());
+        HasFetchedOnce = true;
+    }
+
+    /// <summary>
+    /// Re-filters the cached last-good data against the current selection with no network
+    /// call. Used after a Settings save so the new metric selection takes effect instantly;
+    /// alerts are intentionally skipped (no new readings, just a re-filter).
+    /// </summary>
+    public void RefilterMetrics()
+    {
+        SyncMetrics(SelectedMetrics());
+    }
+
+    private List<UsageMetric> SelectedMetrics()
+    {
         var config = _settingsManager.Current;
+        var all = _lastGoodByProvider.Values.SelectMany(m => m).ToList();
+        return config.SelectedMetrics.Count == 0
+            ? all
+            : all.Where(m => config.SelectedMetrics.Contains(m.Name)).ToList();
+    }
+
+    private void TrackKnownMetricNames()
+    {
         var all = _lastGoodByProvider.Values.SelectMany(m => m).ToList();
 
         // Track every discovered name (unfiltered) so settings can list metrics the
@@ -77,13 +110,6 @@ public partial class ProviderManager : ObservableObject, IProviderManager
             if (!KnownMetricNames.Contains(metric.Name))
                 KnownMetricNames.Add(metric.Name);
         }
-
-        var latest = config.SelectedMetrics.Count == 0
-            ? all
-            : all.Where(m => config.SelectedMetrics.Contains(m.Name)).ToList();
-
-        DetectAlerts(latest, config);
-        SyncMetrics(latest);
     }
 
     private void DetectAlerts(List<UsageMetric> latest, AppConfig config)

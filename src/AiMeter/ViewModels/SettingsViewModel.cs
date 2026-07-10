@@ -61,6 +61,19 @@ public partial class SettingsViewModel : ObservableObject
         MetricOptions.Add(new MetricOption(name, isSelected));
     }
 
+    /// <summary>
+    /// Re-applies the saved selection to every metric option, discarding any unsaved
+    /// checkbox edits. Called on reopen so a singleton VM never shows abandoned toggles
+    /// from the last time the window was closed without Save.
+    /// </summary>
+    public void ResyncMetricSelections()
+    {
+        foreach (var option in MetricOptions)
+        {
+            option.IsSelected = Config.SelectedMetrics.Count == 0 || Config.SelectedMetrics.Contains(option.Name);
+        }
+    }
+
     [RelayCommand]
     private void AccountAction()
     {
@@ -85,6 +98,10 @@ public partial class SettingsViewModel : ObservableObject
     {
         Config.SelectedMetrics = MetricOptions.Where(o => o.IsSelected).Select(o => o.Name).ToList();
         _settingsManager.Save();
-        window?.Close();
+        // Re-filter from cache so the widget reflects the new selection instantly
+        // instead of waiting for the next poll tick. No network call.
+        _providerManager.RefilterMetrics();
+        // The settings window is a singleton: never Close() it (that disposes it), just hide.
+        window?.Hide();
     }
 }
