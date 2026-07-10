@@ -21,6 +21,8 @@ public partial class ProviderManager : ObservableObject, IProviderManager
 
     public ObservableCollection<UsageMetric> Metrics { get; } = new();
 
+    public ObservableCollection<string> KnownMetricNames { get; } = new();
+
     public event EventHandler<QuotaAlert>? AlertRaised;
 
     public ProviderManager(IEnumerable<IProvider> providers, ISettingsManager settingsManager)
@@ -66,9 +68,18 @@ public partial class ProviderManager : ObservableObject, IProviderManager
         }
 
         var config = _settingsManager.Current;
-        var all = _lastGoodByProvider.Values.SelectMany(m => m);
+        var all = _lastGoodByProvider.Values.SelectMany(m => m).ToList();
+
+        // Track every discovered name (unfiltered) so settings can list metrics the
+        // user has deselected and still let them re-enable those.
+        foreach (var metric in all)
+        {
+            if (!KnownMetricNames.Contains(metric.Name))
+                KnownMetricNames.Add(metric.Name);
+        }
+
         var latest = config.SelectedMetrics.Count == 0
-            ? all.ToList()
+            ? all
             : all.Where(m => config.SelectedMetrics.Contains(m.Name)).ToList();
 
         DetectAlerts(latest, config);

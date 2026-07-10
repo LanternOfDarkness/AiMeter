@@ -9,6 +9,24 @@ public partial class AppConfig : ObservableObject
     private double _widgetOpacity = 0.9;
 
     [ObservableProperty]
+    private bool _opacityEnabled = true;
+
+    [ObservableProperty]
+    private double _hoverOpacity = 0.35;
+
+    [ObservableProperty]
+    private double _widgetPadding = 6;
+
+    [ObservableProperty]
+    private double _backgroundOpacity = 0.6;
+
+    [ObservableProperty]
+    private double? _widgetLeft;
+
+    [ObservableProperty]
+    private double? _widgetTop;
+
+    [ObservableProperty]
     private int _pollingIntervalSeconds = 60;
 
     [ObservableProperty]

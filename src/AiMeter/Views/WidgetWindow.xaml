@@ -18,23 +18,57 @@
         <converters:ResetTimeConverter x:Key="ResetTimeConverter" />
         <converters:PercentageToWidthConverter x:Key="PercentageToWidthConverter" />
         <converters:EnumToVisibilityConverter x:Key="EnumToVisibilityConverter" />
+        <converters:DoubleToThicknessConverter x:Key="DoubleToThicknessConverter" />
+        <converters:OpacityToBackgroundBrushConverter x:Key="OpacityToBackgroundBrushConverter" />
+
+        <Style x:Key="WidgetIconButton" TargetType="Button">
+            <Setter Property="Width" Value="20" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="#AAAAAA" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
     </Window.Resources>
 
-    <Border Background="#99000000" CornerRadius="12" Margin="10" Padding="15,10,15,10" Opacity="{Binding Config.WidgetOpacity}">
+    <Border x:Name="RootBorder" Background="{Binding Config.BackgroundOpacity, Converter={StaticResource OpacityToBackgroundBrushConverter}}" CornerRadius="10" Margin="6"
+            Padding="{Binding Config.WidgetPadding, Converter={StaticResource DoubleToThicknessConverter}}"
+            MouseEnter="RootBorder_MouseEnter" MouseLeave="RootBorder_MouseLeave">
         <Border.Effect>
-            <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.5" />
+            <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.5" />
         </Border.Effect>
 
+        <Border.ContextMenu>
+            <ContextMenu>
+                <MenuItem Header="Refresh Now"
+                          Command="{Binding PlacementTarget.DataContext.RefreshCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                <MenuItem Header="Switch Layout"
+                          Command="{Binding PlacementTarget.DataContext.ToggleLayoutCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                <MenuItem Header="Settings"
+                          Command="{Binding PlacementTarget.DataContext.OpenSettingsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                <Separator />
+                <MenuItem Header="Hide Widget"
+                          Command="{Binding PlacementTarget.DataContext.HideCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                          CommandParameter="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            </ContextMenu>
+        </Border.ContextMenu>
+
         <DockPanel>
-            <!-- Title bar: format toggle + hide -->
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,4">
+            <!-- Title bar: only shown in Detailed mode (Compact stays a slim strip) -->
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,4"
+                        Visibility="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Detailed}}">
+                <Button Content="&#8635;" ToolTip="Refresh now" Command="{Binding RefreshCommand}"
+                        Style="{StaticResource WidgetIconButton}" />
+                <Button Content="&#9881;" ToolTip="Settings" Command="{Binding OpenSettingsCommand}"
+                        Style="{StaticResource WidgetIconButton}" />
                 <Button Content="&#8645;" ToolTip="Switch widget layout" Command="{Binding ToggleLayoutCommand}"
-                        Width="20" Height="20" Padding="0" Margin="0,0,4,0"
-                        Background="Transparent" BorderThickness="0" Foreground="#AAAAAA" Cursor="Hand" FontSize="12" />
+                        Style="{StaticResource WidgetIconButton}" />
                 <Button Content="&#10005;" ToolTip="Hide widget" Command="{Binding HideCommand}"
                         CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
-                        Width="20" Height="20" Padding="0"
-                        Background="Transparent" BorderThickness="0" Foreground="#AAAAAA" Cursor="Hand" FontSize="12" />
+                        Style="{StaticResource WidgetIconButton}" Margin="0" />
             </StackPanel>
 
             <!-- Detailed format: circular rings -->
@@ -50,7 +84,7 @@
                         <StackPanel Margin="12,0,12,0" ToolTip="{Binding Name}">
                             <controls:CircularProgress Size="64" StrokeThickness="5"
                                                        Percentage="{Binding RemainingPercentage}"
-                                                       ValueText="{Binding RemainingQuota}"
+                                                       ValueText="{Binding RemainingPercentage, StringFormat={}{0:0}}"
                                                        ForegroundBrush="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}" />
                             <TextBlock Text="{Binding Name}" Foreground="White"
                                        HorizontalAlignment="Center" Margin="0,8,0,0" FontSize="12" MaxWidth="80" TextTrimming="CharacterEllipsis"/>
@@ -77,11 +111,12 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Grid Margin="0,4,0,4" ToolTip="{Binding Name}">
+                        <Grid Margin="0,1,0,1" ToolTip="{Binding Name}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="76" />
                                 <ColumnDefinition Width="120" />
                                 <ColumnDefinition Width="40" />
+                                <ColumnDefinition Width="52" />
                             </Grid.ColumnDefinitions>
 
                             <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="White" FontSize="11"
@@ -95,6 +130,16 @@
 
                             <TextBlock Grid.Column="2" Text="{Binding RemainingPercentage, StringFormat={}{0:0}%}"
                                        Foreground="#CCCCCC" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center" />
+
+                            <TextBlock Grid.Column="3" Foreground="#888888" FontSize="10"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <TextBlock.Text>
+                                    <MultiBinding Converter="{StaticResource ResetTimeConverter}" ConverterParameter="short">
+                                        <Binding Path="ResetTime" />
+                                        <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
                         </Grid>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>

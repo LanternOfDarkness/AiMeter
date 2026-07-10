@@ -27,10 +27,11 @@
         </Path>
         
         <!-- Center Text -->
-        <TextBlock Text="{Binding ValueText, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+        <TextBlock Text="{Binding ValueText, RelativeSource={RelativeSource AncestorType=UserControl}}"
                    Foreground="White"
                    FontWeight="SemiBold"
                    FontSize="16"
+                   TextAlignment="Center"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center" />
     </Grid>

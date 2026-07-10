@@ -59,10 +59,23 @@
                     <StackPanel>
                         <TextBlock Text="APPEARANCE" Style="{StaticResource SectionHeader}" />
 
+                        <CheckBox Content="Enable widget opacity" IsChecked="{Binding Config.OpacityEnabled}" Margin="0,0,0,8" />
                         <TextBlock Text="Widget Opacity" Foreground="White" Margin="0,0,0,6" />
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,14" IsEnabled="{Binding Config.OpacityEnabled}">
                             <Slider Minimum="0.1" Maximum="1.0" Value="{Binding Config.WidgetOpacity}" Width="240" VerticalAlignment="Center" />
                             <TextBlock Text="{Binding Config.WidgetOpacity, StringFormat={}{0:P0}}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <TextBlock Text="Background Opacity" Foreground="White" Margin="0,0,0,6" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                            <Slider Minimum="0.0" Maximum="1.0" Value="{Binding Config.BackgroundOpacity}" Width="240" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Config.BackgroundOpacity, StringFormat={}{0:P0}}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <TextBlock Text="Widget Padding" Foreground="White" Margin="0,0,0,6" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                            <Slider Minimum="2" Maximum="20" Value="{Binding Config.WidgetPadding}" Width="240" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Config.WidgetPadding, StringFormat={}{0:0}px}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
                         </StackPanel>
 
                         <TextBlock Text="Widget Format" Foreground="White" Margin="0,0,0,6" />
@@ -114,9 +127,9 @@
                 <!-- Account -->
                 <Border Style="{StaticResource SectionCard}">
                     <StackPanel>
-                        <TextBlock Text="ACCOUNT" Style="{StaticResource SectionHeader}" />
+                        <TextBlock Text="ACCOUNTS" Style="{StaticResource SectionHeader}" />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                            <Button Content="Log into Claude" Command="{Binding LoginToClaudeCommand}" Width="150" Height="30" HorizontalAlignment="Left"
+                            <Button Content="{Binding AccountButtonText}" Command="{Binding AccountActionCommand}" Width="150" Height="30" HorizontalAlignment="Left"
                                     Background="#5B5B5B" Foreground="White" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" />
                             <TextBlock Text="{Binding LoginStatusText}" Foreground="{Binding LoginStatusColor}" VerticalAlignment="Center" Margin="15,0,0,0" FontWeight="Medium" />
                         </StackPanel>

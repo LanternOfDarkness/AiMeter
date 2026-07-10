@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows;
 using AiMeter.Managers;
 using AiMeter.Models;
+using AiMeter.Services;
 using AiMeter.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -16,6 +17,7 @@ public partial class SettingsViewModel : ObservableObject
 {
     private readonly ISettingsManager _settingsManager;
     private readonly IProviderManager _providerManager;
+    private readonly IClaudeSession _claudeSession;
     private readonly IServiceProvider _serviceProvider;
 
     public AppConfig Config => _settingsManager.Current;
@@ -25,27 +27,29 @@ public partial class SettingsViewModel : ObservableObject
     public bool IsLoggedIn => Config.HasClaudeSession;
     public string LoginStatusText => IsLoggedIn ? "Status: Logged In ✔️" : "Status: Not Logged In";
     public string LoginStatusColor => IsLoggedIn ? "#2ECC71" : "#E74C3C";
+    public string AccountButtonText => IsLoggedIn ? "Log out" : "Log into Claude";
 
-    public SettingsViewModel(ISettingsManager settingsManager, IProviderManager providerManager, IServiceProvider serviceProvider)
+    public SettingsViewModel(ISettingsManager settingsManager, IProviderManager providerManager, IClaudeSession claudeSession, IServiceProvider serviceProvider)
     {
         _settingsManager = settingsManager;
         _providerManager = providerManager;
+        _claudeSession = claudeSession;
         _serviceProvider = serviceProvider;
 
-        foreach (var metric in _providerManager.Metrics)
+        foreach (var name in _providerManager.KnownMetricNames)
         {
-            AddMetricOption(metric.Name);
+            AddMetricOption(name);
         }
 
-        _providerManager.Metrics.CollectionChanged += Metrics_CollectionChanged;
+        _providerManager.KnownMetricNames.CollectionChanged += KnownMetricNames_CollectionChanged;
     }
 
-    private void Metrics_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private void KnownMetricNames_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.NewItems is null) return;
-        foreach (UsageMetric metric in e.NewItems)
+        foreach (string name in e.NewItems)
         {
-            AddMetricOption(metric.Name);
+            AddMetricOption(name);
         }
     }
 
@@ -58,13 +62,22 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void LoginToClaude()
+    private void AccountAction()
     {
-        var authWindow = _serviceProvider.GetRequiredService<AuthWindow>();
-        authWindow.ShowDialog();
+        if (IsLoggedIn)
+        {
+            _claudeSession.Clear();
+        }
+        else
+        {
+            var authWindow = _serviceProvider.GetRequiredService<AuthWindow>();
+            authWindow.ShowDialog();
+        }
+
         OnPropertyChanged(nameof(IsLoggedIn));
         OnPropertyChanged(nameof(LoginStatusText));
         OnPropertyChanged(nameof(LoginStatusColor));
+        OnPropertyChanged(nameof(AccountButtonText));
     }
 
     [RelayCommand]
