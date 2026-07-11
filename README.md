@@ -12,6 +12,19 @@ architecture designed for OpenAI, Gemini, Grok, OpenRouter, DeepSeek, and others
 ![Widget – compact](docs/image2.png)
 ![Settings](docs/settings.png)
 
+## Download
+
+**Latest release: v1.0.0** —
+[AiMeter-v1.0.0-win-x64.zip](https://github.com/LanternOfDarkness/AiMeter/releases/download/v1.0.0/AiMeter-v1.0.0-win-x64.zip)
+
+```
+SHA-256: 7EFCD780F88F4F33B34E52A5B417A754CCE9BC1B62389DF481D86A978A4239C5
+```
+
+Framework-dependent build for **win-x64** — needs the .NET 9 Desktop Runtime and the WebView2
+Runtime (see [Requirements](#requirements)). Extract the zip and run `AiMeter.exe`.
+Verify the download with `Get-FileHash AiMeter-v1.0.0-win-x64.zip -Algorithm SHA256`.
+
 ## Features
 
 - **Multiple providers** — track Claude and OpenCode together; log into each under
