@@ -16,6 +16,7 @@ public partial class WidgetWindow : Window
     private readonly WidgetViewModel _viewModel;
     private bool _isHovered;
     private bool _positionApplied;
+    private HwndSource? _hwndSource;
 
     /// <summary>
     /// True when the user deliberately hid the widget (via the Hide command). Lets the
@@ -31,28 +32,23 @@ public partial class WidgetWindow : Window
         Hide();
     }
 
-    // Self-heal: layered on top of the event-driven foreground hook, because the hook can
-    // only re-assert topmost while already visible — it cannot recover a window that some
-    // external process hid. A low-frequency poll re-shows and re-asserts in that case.
+    // Self-heal: layered on top of the event-driven foreground hook below, because that hook
+    // can only re-assert topmost while already visible - it cannot recover a window that some
+    // external process hid (e.g. the Snipping Tool's own topmost overlay hiding us mid-shot).
+    // A low-frequency poll re-shows and re-asserts in that case.
     private DispatcherTimer? _selfHealTimer;
 
     // Foreground-change hook: re-assert topmost whenever any window (incl. the taskbar)
-    // becomes foreground, so the widget never gets buried by the shell. Event-driven, so
-    // it costs nothing between focus changes - no polling timer.
+    // becomes foreground. This is the mechanism that actually stops the flicker - when the
+    // taskbar (itself topmost) is clicked, Explorer reorders *it* to the front of the topmost
+    // band; that reorder happens on the taskbar's own HWND and never sends our window any
+    // WM_WINDOWPOSCHANGING message, so a hook on our own window cannot see or prevent it. We
+    // have to react to the foreground-change event and immediately push ourselves back above
+    // it. Event-driven, so it costs nothing between focus changes - no polling required.
     private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
     private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
     private WinEventDelegate? _winEventProc;
     private IntPtr _winEventHook;
-
-    private static readonly IntPtr HWND_TOPMOST = new(-1);
-    private const uint SWP_NOSIZE = 0x0001;
-    private const uint SWP_NOMOVE = 0x0002;
-    private const uint SWP_NOACTIVATE = 0x0010;
-
-    // Minimum window size floor, applied only in Detailed mode where the first-run skeleton
-    // would otherwise let the window open near-invisible. Compact mode uses no floor so the
-    // slim bar strip can shrink to fit within a taskbar's height (see ApplyMinSizeForLayout).
-    private const double DetailedMinSize = 120;
 
     private delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
@@ -64,9 +60,44 @@ public partial class WidgetWindow : Window
     [DllImport("user32.dll")]
     private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
 
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOZORDER = 0x0004;
+    private const uint SWP_NOACTIVATE = 0x0010;
+
+    private const int GWL_EXSTYLE = -20;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int WS_EX_NOACTIVATE = 0x08000000;
+
+    private const int WM_WINDOWPOSCHANGING = 0x0046;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WINDOWPOS
+    {
+        public IntPtr hwnd;
+        public IntPtr hwndInsertAfter;
+        public int x;
+        public int y;
+        public int cx;
+        public int cy;
+        public uint flags;
+    }
+
+    // Minimum window size floor, applied only in Detailed mode where the first-run skeleton
+    // would otherwise let the window open near-invisible. Compact mode uses no floor so the
+    // slim bar strip can shrink to fit within a taskbar's height (see ApplyMinSizeForLayout).
+    private const double DetailedMinSize = 120;
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
     private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
 
@@ -118,25 +149,48 @@ public partial class WidgetWindow : Window
         _viewModel.Config.PropertyChanged += Config_PropertyChanged;
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Sets up the window as a true always-on-top, non-activating tool window and installs a
+    /// WM_WINDOWPOSCHANGING hook that forces any z-order change targeting *our own* window
+    /// back to HWND_TOPMOST before it takes effect. This catches direct attempts to move us
+    /// out of the topmost band, but it can't see a sibling topmost window (like the taskbar)
+    /// reordering itself above us - that reorder never touches our HWND. The foreground-change
+    /// hook installed alongside it (see InstallForegroundHook) is what actually handles that
+    /// case, by reacting the instant the taskbar becomes foreground.
+    /// </summary>
+    protected override void OnSourceInitialized(EventArgs e)
     {
-        ApplyMinSizeForLayout();
-        ApplyInitialPosition();
-        ApplyOpacity();
+        base.OnSourceInitialized(e);
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+
+        var exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+        SetWindowLong(hwnd, GWL_EXSTYLE, exStyle | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
+
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+        _hwndSource = HwndSource.FromHwnd(hwnd);
+        _hwndSource?.AddHook(WndProc);
+
         InstallForegroundHook();
-        StartSelfHealTimer();
     }
 
-    /// <summary>
-    /// Applies the Detailed-mode min-size floor (needed by the first-run skeleton) or clears
-    /// it in Compact mode, where the widget is a slim strip meant to sit within a taskbar's
-    /// height — a fixed floor there would leave a large empty area below the bars.
-    /// </summary>
-    private void ApplyMinSizeForLayout()
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        var detailed = _viewModel.Config.WidgetLayoutMode == WidgetLayoutMode.Detailed;
-        MinWidth = detailed ? DetailedMinSize : 0;
-        MinHeight = detailed ? DetailedMinSize : 0;
+        if (msg == WM_WINDOWPOSCHANGING)
+        {
+            // When the user has turned off "show over fullscreen", yield to a fullscreen app
+            // (a game etc.) instead of forcing ourselves back above its own topmost surface.
+            if (_viewModel.Config.ShowOverFullscreen || !IsForegroundWindowFullscreen())
+            {
+                var pos = Marshal.PtrToStructure<WINDOWPOS>(lParam);
+                pos.hwndInsertAfter = HWND_TOPMOST;
+                pos.flags &= ~SWP_NOZORDER;
+                Marshal.StructureToPtr(pos, lParam, true);
+            }
+        }
+
+        return IntPtr.Zero;
     }
 
     private void InstallForegroundHook()
@@ -157,6 +211,46 @@ public partial class WidgetWindow : Window
         _winEventProc = null;
     }
 
+    private void OnForegroundChanged(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+        => ReassertTopmost();
+
+    private void ReassertTopmost()
+    {
+        if (!IsVisible) return;
+
+        // When the user has turned off "show over fullscreen", yield to a fullscreen app (a
+        // game etc.): skip the re-assert so its own topmost surface stays above the widget.
+        if (!_viewModel.Config.ShowOverFullscreen && IsForegroundWindowFullscreen()) return;
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+
+        // Push back to the top of the z-order without activating (so we never steal focus
+        // from whatever the user just clicked, including the taskbar).
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        ApplyMinSizeForLayout();
+        ApplyInitialPosition();
+        ApplyOpacity();
+        StartSelfHealTimer();
+    }
+
+    /// <summary>
+    /// Applies the Detailed-mode min-size floor (needed by the first-run skeleton) or clears
+    /// it in Compact mode, where the widget is a slim strip meant to sit within a taskbar's
+    /// height — a fixed floor there would leave a large empty area below the bars.
+    /// </summary>
+    private void ApplyMinSizeForLayout()
+    {
+        var detailed = _viewModel.Config.WidgetLayoutMode == WidgetLayoutMode.Detailed;
+        MinWidth = detailed ? DetailedMinSize : 0;
+        MinHeight = detailed ? DetailedMinSize : 0;
+    }
+
     private void StartSelfHealTimer()
     {
         _selfHealTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
@@ -175,10 +269,6 @@ public partial class WidgetWindow : Window
 
         ReassertTopmost();
     }
-
-    private void OnForegroundChanged(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
-        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
-        => ReassertTopmost();
 
     /// <summary>
     /// Restores the saved position if the user has moved the widget before; otherwise
@@ -225,12 +315,21 @@ public partial class WidgetWindow : Window
         if (!_positionApplied) return;
 
         var bounds = GetMonitorBoundsForWindow();
-        var (left, top) = ScreenMath.ClampToBounds(
-            this.Left, this.Top, this.ActualWidth, this.ActualHeight,
+
+        // Clamp against the visible border, not the window's full size: RootBorder reserves
+        // a transparent Margin for the drop shadow's blur, so clamping the whole window to
+        // the monitor left that margin's worth of empty screen between the visible edge and
+        // the true screen edge - the widget could never be dragged flush against it.
+        var margin = RootBorder.Margin;
+        var visibleWidth = this.ActualWidth - margin.Left - margin.Right;
+        var visibleHeight = this.ActualHeight - margin.Top - margin.Bottom;
+
+        var (visibleLeft, visibleTop) = ScreenMath.ClampToBounds(
+            this.Left + margin.Left, this.Top + margin.Top, visibleWidth, visibleHeight,
             bounds.Left, bounds.Top, bounds.Width, bounds.Height);
 
-        this.Left = left;
-        this.Top = top;
+        this.Left = visibleLeft - margin.Left;
+        this.Top = visibleTop - margin.Top;
     }
 
     /// <summary>
@@ -265,23 +364,6 @@ public partial class WidgetWindow : Window
     {
         var m = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice;
         return m.HasValue ? (m.Value.M11, m.Value.M22) : (1.0, 1.0);
-    }
-
-    private void ReassertTopmost()
-    {
-        if (!IsVisible) return;
-
-        // When the user has turned off "show over fullscreen", yield to a fullscreen app (a
-        // game etc.): skip the re-assert so its own topmost surface stays above the widget.
-        // (True exclusive-fullscreen can't be overlaid by any window regardless of this.)
-        if (!_viewModel.Config.ShowOverFullscreen && IsForegroundWindowFullscreen()) return;
-
-        var hwnd = new WindowInteropHelper(this).Handle;
-        if (hwnd == IntPtr.Zero) return;
-
-        // Push back to the top of the z-order without activating (so we never steal focus
-        // from whatever the user just clicked, including the taskbar).
-        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 
     /// <summary>

@@ -172,7 +172,12 @@ public partial class ProviderManager : ObservableObject, IProviderManager
                 {
                     Metrics.Move(existingIndex, i);
                 }
-                Metrics[i] = newMetric;
+
+                // Update the existing instance's properties instead of replacing the
+                // collection entry, so bound UI (CircularProgress, labels) refreshes via
+                // INotifyPropertyChanged rather than the ItemsControl tearing down and
+                // recreating the tile's elements on every poll.
+                Metrics[i].UpdateFrom(newMetric);
             }
         }
     }

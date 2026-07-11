@@ -26,13 +26,19 @@
             </Path.Data>
         </Path>
         
-        <!-- Center Text -->
-        <TextBlock Text="{Binding ValueText, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                   Foreground="White"
+        <!-- Center Text: value + "%" as Runs in one TextBlock (a StackPanel would shift the
+             visual center between the two differently-sized runs). LineStackingStrategy +
+             LineHeight pinned to FontSize compensates for the font's internal leading, which
+             otherwise pushes vertically-centered text visibly above true center. -->
+        <TextBlock Foreground="White"
                    FontWeight="SemiBold"
                    FontSize="16"
                    TextAlignment="Center"
                    HorizontalAlignment="Center"
-                   VerticalAlignment="Center" />
+                   VerticalAlignment="Center"
+                   Padding="0"
+                   Margin="0,1,0,0"
+                   LineStackingStrategy="BlockLineHeight"
+                   LineHeight="16"><Run Text="{Binding ValueText, RelativeSource={RelativeSource AncestorType=UserControl}}" /><Run Text="%" FontSize="10" FontWeight="Normal" /></TextBlock>
     </Grid>
 </UserControl>
