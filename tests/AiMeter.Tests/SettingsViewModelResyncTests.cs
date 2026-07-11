@@ -23,8 +23,9 @@ public class SettingsViewModelResyncTests
     private static SettingsViewModel BuildVm(FakeSettingsManager settings, ProviderManager manager)
     {
         var session = new FakeClaudeSession();
+        var openCodeSession = new FakeOpenCodeSession();
         var sp = new FakeServiceProvider();
-        return new SettingsViewModel(settings, manager, session, sp);
+        return new SettingsViewModel(settings, manager, session, openCodeSession, sp);
     }
 
     [Fact]

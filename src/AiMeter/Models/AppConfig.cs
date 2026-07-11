@@ -33,6 +33,9 @@ public partial class AppConfig : ObservableObject
     private bool _hasClaudeSession;
 
     [ObservableProperty]
+    private bool _hasOpenCodeSession;
+
+    [ObservableProperty]
     private List<string> _selectedMetrics = new();
 
     [ObservableProperty]

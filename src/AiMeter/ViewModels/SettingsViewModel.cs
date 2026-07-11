@@ -17,24 +17,26 @@ public partial class SettingsViewModel : ObservableObject
 {
     private readonly ISettingsManager _settingsManager;
     private readonly IProviderManager _providerManager;
-    private readonly IClaudeSession _claudeSession;
-    private readonly IServiceProvider _serviceProvider;
 
     public AppConfig Config => _settingsManager.Current;
 
     public ObservableCollection<MetricOption> MetricOptions { get; } = new();
 
-    public bool IsLoggedIn => Config.HasClaudeSession;
-    public string LoginStatusText => IsLoggedIn ? "Status: Logged In ✔️" : "Status: Not Logged In";
-    public string LoginStatusColor => IsLoggedIn ? "#2ECC71" : "#E74C3C";
-    public string AccountButtonText => IsLoggedIn ? "Log out" : "Log into Claude";
+    /// <summary>One login/logout row per usage provider (Claude, OpenCode, …).</summary>
+    public ObservableCollection<AccountRowViewModel> Accounts { get; } = new();
 
-    public SettingsViewModel(ISettingsManager settingsManager, IProviderManager providerManager, IClaudeSession claudeSession, IServiceProvider serviceProvider)
+    public SettingsViewModel(ISettingsManager settingsManager, IProviderManager providerManager,
+        IClaudeSession claudeSession, IOpenCodeSession openCodeSession, IServiceProvider serviceProvider)
     {
         _settingsManager = settingsManager;
         _providerManager = providerManager;
-        _claudeSession = claudeSession;
-        _serviceProvider = serviceProvider;
+
+        Accounts.Add(new AccountRowViewModel(claudeSession,
+            () => serviceProvider.GetRequiredService<AuthWindow>(),
+            "Requires logging into Claude.ai to fetch web limits."));
+        Accounts.Add(new AccountRowViewModel(openCodeSession,
+            () => serviceProvider.GetRequiredService<OpenCodeAuthWindow>(),
+            "Requires logging into opencode.ai to fetch usage."));
 
         foreach (var name in _providerManager.KnownMetricNames)
         {
@@ -72,25 +74,6 @@ public partial class SettingsViewModel : ObservableObject
         {
             option.IsSelected = Config.SelectedMetrics.Count == 0 || Config.SelectedMetrics.Contains(option.Name);
         }
-    }
-
-    [RelayCommand]
-    private void AccountAction()
-    {
-        if (IsLoggedIn)
-        {
-            _claudeSession.Clear();
-        }
-        else
-        {
-            var authWindow = _serviceProvider.GetRequiredService<AuthWindow>();
-            authWindow.ShowDialog();
-        }
-
-        OnPropertyChanged(nameof(IsLoggedIn));
-        OnPropertyChanged(nameof(LoginStatusText));
-        OnPropertyChanged(nameof(LoginStatusColor));
-        OnPropertyChanged(nameof(AccountButtonText));
     }
 
     [RelayCommand]

@@ -119,16 +119,24 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Account -->
+                    <!-- Accounts (one row per provider) -->
                     <Border Style="{StaticResource SectionCard}">
                         <StackPanel>
                             <TextBlock Text="ACCOUNTS" Style="{StaticResource SectionHeader}" />
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                <Button Content="{Binding AccountButtonText}" Command="{Binding AccountActionCommand}" Width="150" Height="30" HorizontalAlignment="Left"
-                                        Background="#5B5B5B" Foreground="White" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" />
-                                <TextBlock Text="{Binding LoginStatusText}" Foreground="{Binding LoginStatusColor}" VerticalAlignment="Center" Margin="15,0,0,0" FontWeight="Medium" />
-                            </StackPanel>
-                            <TextBlock Text="Requires logging into Claude.ai to fetch web limits." Style="{StaticResource HintText}" />
+                            <ItemsControl ItemsSource="{Binding Accounts}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,0,0,12">
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                <Button Content="{Binding ButtonText}" Command="{Binding ActionCommand}" Width="150" Height="30" HorizontalAlignment="Left"
+                                                        Background="#5B5B5B" Foreground="White" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" />
+                                                <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusColor}" VerticalAlignment="Center" Margin="15,0,0,0" FontWeight="Medium" />
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding HintText}" Style="{StaticResource HintText}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </Border>
 

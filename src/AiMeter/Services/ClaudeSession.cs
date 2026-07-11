@@ -19,6 +19,8 @@ public class ClaudeSession : IClaudeSession
         _settingsManager = settingsManager;
     }
 
+    public string ProviderName => "Claude";
+
     public bool HasSession => _settingsManager.Current.HasClaudeSession;
 
     public void Store(IEnumerable<(string Name, string Value)> cookies)

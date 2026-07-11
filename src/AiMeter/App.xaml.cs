@@ -29,9 +29,12 @@ public partial class App : Application
                 services.AddSingleton<ISettingsManager, SettingsManager>();
                 services.AddSingleton<IClaudeSession, ClaudeSession>();
                 services.AddSingleton<IClaudeApiClient, ClaudeApiClient>();
+                services.AddSingleton<IOpenCodeSession, OpenCodeSession>();
+                services.AddSingleton<IOpenCodeApiClient, OpenCodeApiClient>();
 
                 // Register Providers
                 services.AddTransient<IProvider, ClaudeWebProvider>();
+                services.AddTransient<IProvider, OpenCodeProvider>();
 
                 // Register ViewModels
                 services.AddSingleton<TrayViewModel>();
@@ -42,6 +45,7 @@ public partial class App : Application
                 services.AddSingleton<Views.WidgetWindow>();
                 services.AddSingleton<Views.SettingsWindow>();
                 services.AddTransient<Views.AuthWindow>();
+                services.AddTransient<Views.OpenCodeAuthWindow>();
             })
             .Build();
     }
@@ -84,6 +88,7 @@ public partial class App : Application
         _notifyIcon?.Dispose();
 
         (_host!.Services.GetService<IClaudeApiClient>() as IDisposable)?.Dispose();
+        (_host!.Services.GetService<IOpenCodeApiClient>() as IDisposable)?.Dispose();
 
         await _host!.StopAsync();
         _host.Dispose();
