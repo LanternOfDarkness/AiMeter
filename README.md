@@ -24,6 +24,9 @@ architecture designed for OpenAI, Gemini, Grok, OpenRouter, DeepSeek, and others
   fade in at the top-right), or right-click anywhere on it for the same menu.
 - **Reset countdowns** that stay live and format long windows as days + hours.
 - **System tray** app: show/hide widget, open settings, refresh, exit.
+- **Launch at startup** — optionally start AiMeter when you sign into Windows.
+- **Stay over fullscreen** — keeps the widget above borderless-fullscreen games (toggle in
+  Settings → General). True exclusive-fullscreen apps can't be overlaid by any window.
 - **Adjustable opacity** with an on-hover dim, or turn opacity off entirely.
 - **Configurable notifications** for low, exhausted, and reset quotas.
 - **Pick which metrics are shown** — deselected metrics stay listed so you can re-enable them.

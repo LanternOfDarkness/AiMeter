@@ -21,11 +21,32 @@ public class SettingsViewModelResyncTests
     };
 
     private static SettingsViewModel BuildVm(FakeSettingsManager settings, ProviderManager manager)
+        => BuildVm(settings, manager, new FakeStartupManager());
+
+    private static SettingsViewModel BuildVm(FakeSettingsManager settings, ProviderManager manager, FakeStartupManager startup)
     {
         var session = new FakeClaudeSession();
         var openCodeSession = new FakeOpenCodeSession();
         var sp = new FakeServiceProvider();
-        return new SettingsViewModel(settings, manager, session, openCodeSession, sp);
+        return new SettingsViewModel(settings, manager, session, openCodeSession, startup, sp);
+    }
+
+    [Fact]
+    public void LaunchOnStartup_reflects_and_toggles_the_startup_manager()
+    {
+        var settings = new FakeSettingsManager();
+        var manager = new ProviderManager(new IProvider[] { new FakeProvider() }, settings);
+        var startup = new FakeStartupManager();
+        var vm = BuildVm(settings, manager, startup);
+
+        vm.LaunchOnStartup.Should().BeFalse();
+
+        vm.LaunchOnStartup = true;
+        startup.IsEnabled.Should().BeTrue();
+        vm.LaunchOnStartup.Should().BeTrue();
+
+        vm.LaunchOnStartup = false;
+        startup.IsEnabled.Should().BeFalse();
     }
 
     [Fact]

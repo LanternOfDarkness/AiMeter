@@ -42,6 +42,9 @@ public partial class AppConfig : ObservableObject
     private WidgetLayoutMode _widgetLayoutMode = WidgetLayoutMode.Detailed;
 
     [ObservableProperty]
+    private bool _showOverFullscreen = true;
+
+    [ObservableProperty]
     private bool _notificationsEnabled = true;
 
     [ObservableProperty]

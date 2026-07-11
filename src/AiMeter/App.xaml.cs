@@ -27,6 +27,7 @@ public partial class App : Application
                 // Register Managers
                 services.AddSingleton<IProviderManager, ProviderManager>();
                 services.AddSingleton<ISettingsManager, SettingsManager>();
+                services.AddSingleton<IStartupManager, StartupManager>();
                 services.AddSingleton<IClaudeSession, ClaudeSession>();
                 services.AddSingleton<IClaudeApiClient, ClaudeApiClient>();
                 services.AddSingleton<IOpenCodeSession, OpenCodeSession>();

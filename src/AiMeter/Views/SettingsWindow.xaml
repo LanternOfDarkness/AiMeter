@@ -95,9 +95,20 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- Right column: Alerts + Accounts -->
+            <!-- Right column: General + Alerts + Accounts -->
             <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Padding="6,0,0,0">
                 <StackPanel>
+
+                    <!-- General -->
+                    <Border Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <TextBlock Text="GENERAL" Style="{StaticResource SectionHeader}" />
+                            <CheckBox Content="Launch at Windows startup" IsChecked="{Binding LaunchOnStartup}" Margin="0,0,0,8" />
+                            <CheckBox Content="Show over fullscreen apps" IsChecked="{Binding Config.ShowOverFullscreen}" />
+                            <TextBlock Text="Keeps the widget on top of borderless-fullscreen games. True exclusive-fullscreen apps can't be overlaid by any window."
+                                       Style="{StaticResource HintText}" />
+                        </StackPanel>
+                    </Border>
 
                     <!-- Notifications -->
                     <Border Style="{StaticResource SectionCard}">

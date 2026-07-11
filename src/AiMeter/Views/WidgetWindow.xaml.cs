@@ -89,6 +89,13 @@ public partial class WidgetWindow : Window
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
     public WidgetWindow(WidgetViewModel viewModel)
     {
         InitializeComponent();
@@ -264,12 +271,38 @@ public partial class WidgetWindow : Window
     {
         if (!IsVisible) return;
 
+        // When the user has turned off "show over fullscreen", yield to a fullscreen app (a
+        // game etc.): skip the re-assert so its own topmost surface stays above the widget.
+        // (True exclusive-fullscreen can't be overlaid by any window regardless of this.)
+        if (!_viewModel.Config.ShowOverFullscreen && IsForegroundWindowFullscreen()) return;
+
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero) return;
 
         // Push back to the top of the z-order without activating (so we never steal focus
         // from whatever the user just clicked, including the taskbar).
         SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+
+    /// <summary>
+    /// True when the foreground window covers an entire monitor — a fullscreen game/app, as
+    /// opposed to a merely maximized window (which stops at the work area, leaving the taskbar).
+    /// Lets the widget step aside for fullscreen apps when "show over fullscreen" is off.
+    /// </summary>
+    private bool IsForegroundWindowFullscreen()
+    {
+        var fg = GetForegroundWindow();
+        if (fg == IntPtr.Zero || fg == new WindowInteropHelper(this).Handle) return false;
+        if (!GetWindowRect(fg, out var wr)) return false;
+
+        var hMonitor = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST);
+        if (hMonitor == IntPtr.Zero) return false;
+
+        var info = new MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(hMonitor, ref info)) return false;
+
+        var m = info.rcMonitor;
+        return wr.Left <= m.Left && wr.Top <= m.Top && wr.Right >= m.Right && wr.Bottom >= m.Bottom;
     }
 
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

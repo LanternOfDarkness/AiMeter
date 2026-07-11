@@ -17,6 +17,7 @@ public partial class SettingsViewModel : ObservableObject
 {
     private readonly ISettingsManager _settingsManager;
     private readonly IProviderManager _providerManager;
+    private readonly IStartupManager _startupManager;
 
     public AppConfig Config => _settingsManager.Current;
 
@@ -25,11 +26,28 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>One login/logout row per usage provider (Claude, OpenCode, …).</summary>
     public ObservableCollection<AccountRowViewModel> Accounts { get; } = new();
 
+    /// <summary>
+    /// Launch-at-Windows-startup toggle. Backed directly by the registry (via
+    /// <see cref="IStartupManager"/>), so it applies immediately and always reflects reality —
+    /// it isn't part of settings.json and doesn't wait for Save.
+    /// </summary>
+    public bool LaunchOnStartup
+    {
+        get => _startupManager.IsEnabled;
+        set
+        {
+            _startupManager.SetEnabled(value);
+            OnPropertyChanged();
+        }
+    }
+
     public SettingsViewModel(ISettingsManager settingsManager, IProviderManager providerManager,
-        IClaudeSession claudeSession, IOpenCodeSession openCodeSession, IServiceProvider serviceProvider)
+        IClaudeSession claudeSession, IOpenCodeSession openCodeSession, IStartupManager startupManager,
+        IServiceProvider serviceProvider)
     {
         _settingsManager = settingsManager;
         _providerManager = providerManager;
+        _startupManager = startupManager;
 
         Accounts.Add(new AccountRowViewModel(claudeSession,
             () => serviceProvider.GetRequiredService<AuthWindow>(),
