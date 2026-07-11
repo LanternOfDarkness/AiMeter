@@ -49,6 +49,11 @@ public partial class WidgetWindow : Window
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOACTIVATE = 0x0010;
 
+    // Minimum window size floor, applied only in Detailed mode where the first-run skeleton
+    // would otherwise let the window open near-invisible. Compact mode uses no floor so the
+    // slim bar strip can shrink to fit within a taskbar's height (see ApplyMinSizeForLayout).
+    private const double DetailedMinSize = 120;
+
     private delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
 
@@ -108,10 +113,23 @@ public partial class WidgetWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        ApplyMinSizeForLayout();
         ApplyInitialPosition();
         ApplyOpacity();
         InstallForegroundHook();
         StartSelfHealTimer();
+    }
+
+    /// <summary>
+    /// Applies the Detailed-mode min-size floor (needed by the first-run skeleton) or clears
+    /// it in Compact mode, where the widget is a slim strip meant to sit within a taskbar's
+    /// height — a fixed floor there would leave a large empty area below the bars.
+    /// </summary>
+    private void ApplyMinSizeForLayout()
+    {
+        var detailed = _viewModel.Config.WidgetLayoutMode == WidgetLayoutMode.Detailed;
+        MinWidth = detailed ? DetailedMinSize : 0;
+        MinHeight = detailed ? DetailedMinSize : 0;
     }
 
     private void InstallForegroundHook()
@@ -186,17 +204,20 @@ public partial class WidgetWindow : Window
     }
 
     /// <summary>
-    /// Clamps the current top-left into the work area of the monitor the widget is
+    /// Clamps the current top-left into the full bounds of the monitor the widget is
     /// currently on, without re-anchoring, so the widget keeps the position the user
-    /// dragged it to even as its size changes. Clamping against the window's own monitor
-    /// (not just the primary) also stops a widget on a secondary display from snapping back
-    /// to the primary monitor on every size change (layout toggle, metric count change).
+    /// dragged it to even as its size changes. Clamping against the full monitor (not its
+    /// work area) deliberately lets the widget sit over the taskbar — it's a taskbar-style
+    /// meter — while still stopping at the physical screen edge. Clamping against the
+    /// window's own monitor (not just the primary) also stops a widget on a secondary
+    /// display from snapping back to the primary on every size change (layout toggle,
+    /// metric count change).
     /// </summary>
     private void KeepOnScreen()
     {
         if (!_positionApplied) return;
 
-        var bounds = GetWorkAreaForWindow();
+        var bounds = GetMonitorBoundsForWindow();
         var (left, top) = ScreenMath.ClampToBounds(
             this.Left, this.Top, this.ActualWidth, this.ActualHeight,
             bounds.Left, bounds.Top, bounds.Width, bounds.Height);
@@ -206,28 +227,31 @@ public partial class WidgetWindow : Window
     }
 
     /// <summary>
-    /// Returns the work area (in WPF DIPs) of the monitor the window currently overlaps,
-    /// via Win32 MonitorFromWindow/GetMonitorInfo so we don't depend on WinForms (which
-    /// would clash with WPF's global usings). Falls back to the primary work area until
-    /// the window has an HWND.
+    /// Returns the full bounds (in WPF DIPs, taskbar included) of the monitor the window
+    /// currently overlaps, via Win32 MonitorFromWindow/GetMonitorInfo so we don't depend on
+    /// WinForms (which would clash with WPF's global usings). Falls back to the primary
+    /// screen bounds until the window has an HWND.
     /// </summary>
-    private System.Windows.Rect GetWorkAreaForWindow()
+    private System.Windows.Rect GetMonitorBoundsForWindow()
     {
+        var primaryBounds = new System.Windows.Rect(
+            0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
+
         var hwnd = new WindowInteropHelper(this).Handle;
-        if (hwnd == IntPtr.Zero) return SystemParameters.WorkArea;
+        if (hwnd == IntPtr.Zero) return primaryBounds;
 
         var hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-        if (hMonitor == IntPtr.Zero) return SystemParameters.WorkArea;
+        if (hMonitor == IntPtr.Zero) return primaryBounds;
 
         var info = new MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
-        if (!GetMonitorInfo(hMonitor, ref info)) return SystemParameters.WorkArea;
+        if (!GetMonitorInfo(hMonitor, ref info)) return primaryBounds;
 
         var scale = GetDpiScale();
         return new System.Windows.Rect(
-            info.rcWork.Left / scale.x,
-            info.rcWork.Top / scale.y,
-            (info.rcWork.Right - info.rcWork.Left) / scale.x,
-            (info.rcWork.Bottom - info.rcWork.Top) / scale.y);
+            info.rcMonitor.Left / scale.x,
+            info.rcMonitor.Top / scale.y,
+            (info.rcMonitor.Right - info.rcMonitor.Left) / scale.x,
+            (info.rcMonitor.Bottom - info.rcMonitor.Top) / scale.y);
     }
 
     private (double x, double y) GetDpiScale()
@@ -278,17 +302,25 @@ public partial class WidgetWindow : Window
         {
             ApplyOpacity();
         }
+        else if (e.PropertyName == nameof(AppConfig.WidgetLayoutMode))
+        {
+            // Switching to Compact drops the Detailed floor so the window can shrink to the
+            // slim strip; switching back restores it. SizeChanged then re-clamps the position.
+            ApplyMinSizeForLayout();
+        }
     }
 
     private void ApplyOpacity()
     {
         var config = _viewModel.Config;
+        // Applied to the content only (not RootBorder) so the hover-revealed controls overlay,
+        // a sibling of ContentHost, stays fully opaque even while the metrics dim on hover.
         if (!config.OpacityEnabled)
         {
-            RootBorder.Opacity = 1.0;
+            ContentHost.Opacity = 1.0;
             return;
         }
 
-        RootBorder.Opacity = _isHovered ? config.HoverOpacity : config.WidgetOpacity;
+        ContentHost.Opacity = _isHovered ? config.HoverOpacity : config.WidgetOpacity;
     }
 }

@@ -8,7 +8,7 @@
         xmlns:viewModels="clr-namespace:AiMeter.ViewModels"
         xmlns:models="clr-namespace:AiMeter.Models"
         mc:Ignorable="d"
-        Title="AiMeter Widget" Width="Auto" SizeToContent="WidthAndHeight" MinWidth="120" MinHeight="120"
+        Title="AiMeter Widget" Width="Auto" SizeToContent="WidthAndHeight"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False"
         MouseLeftButtonDown="Window_MouseLeftButtonDown">
@@ -62,21 +62,8 @@
             </ContextMenu>
         </Border.ContextMenu>
 
-        <DockPanel>
-            <!-- Title bar: only shown in Detailed mode (Compact stays a slim strip) -->
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,4"
-                        Visibility="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Detailed}}">
-                <Button Content="&#8635;" ToolTip="Refresh now" Command="{Binding RefreshCommand}"
-                        Style="{StaticResource WidgetIconButton}" />
-                <Button Content="&#9881;" ToolTip="Settings" Command="{Binding OpenSettingsCommand}"
-                        Style="{StaticResource WidgetIconButton}" />
-                <Button Content="&#8645;" ToolTip="Switch widget layout" Command="{Binding ToggleLayoutCommand}"
-                        Style="{StaticResource WidgetIconButton}" />
-                <Button Content="&#10005;" ToolTip="Hide widget" Command="{Binding HideCommand}"
-                        CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
-                        Style="{StaticResource WidgetIconButton}" Margin="0" />
-            </StackPanel>
-
+        <Grid>
+        <DockPanel x:Name="ContentHost">
             <!-- Skeleton placeholder shown before the first poll completes (Detailed mode only),
                  sized like one real tile so the window opens at a sensible fixed size. -->
             <StackPanel DockPanel.Dock="Top" Margin="14,0,14,0"
@@ -142,5 +129,34 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </DockPanel>
+
+            <!-- Controls overlay: revealed on hover in the top-right corner, so it never eats a
+                 layout row or crowds the tiles at rest. Works in both Detailed and Compact modes.
+                 A translucent pill keeps the glyphs legible over whatever sits behind them. -->
+            <Border HorizontalAlignment="Right" VerticalAlignment="Top" Panel.ZIndex="10"
+                    Background="#E6303034" CornerRadius="7" Padding="3,2">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsMouseOver, ElementName=RootBorder}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="&#8635;" ToolTip="Refresh now" Command="{Binding RefreshCommand}"
+                            Style="{StaticResource WidgetIconButton}" />
+                    <Button Content="&#9881;" ToolTip="Settings" Command="{Binding OpenSettingsCommand}"
+                            Style="{StaticResource WidgetIconButton}" />
+                    <Button Content="&#8645;" ToolTip="Switch widget layout" Command="{Binding ToggleLayoutCommand}"
+                            Style="{StaticResource WidgetIconButton}" />
+                    <Button Content="&#10005;" ToolTip="Hide widget" Command="{Binding HideCommand}"
+                            CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
+                            Style="{StaticResource WidgetIconButton}" Margin="0" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Border>
 </Window>
