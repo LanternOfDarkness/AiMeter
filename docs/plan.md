@@ -2,6 +2,27 @@
 
 ## Progress (updated after this session)
 
+**Fixed this session (uncommitted):**
+- **Critical startup crash**, present since Workstream D/B landed: `src/AiMeter/app.ico` was a 126-byte corrupted file (valid ICONDIR header but a bogus size field pointing past EOF). `dotnet build`/`dotnet test` never caught it because MSBuild's icon embedding is lenient, but WPF's `BitmapDecoder` isn't — `SettingsWindow.xaml`'s `Icon="pack://application:,,,/app.ico"` (Workstream B) threw `XamlParseException` during `InitializeComponent()`. Because `SettingsWindow` is now a DI singleton that `TrayViewModel`/`WidgetViewModel` construct eagerly (Workstream A1), this crashed the app on **every** launch, before any window ever appeared — an unhandled exception on the dispatcher thread that silently killed the process with no dialog. This is why the "Manual-verify still pending" list below was never actually exercised. Also found: `app.png` is mislabeled — its actual bytes are baseline JPEG (no alpha channel), not PNG.
+- Regenerated `app.ico` as a proper 4-size (16/32/48/256) PNG-compressed ICO from `app.png` via `System.Drawing`. App now launches and stays running. Verified via clean rebuild (`dotnet build`/`dotnet test`, deleted `bin`/`obj` first) — still 0 errors, 16/16 tests pass — then an actual launch: widget window renders and shows "Auth Required" (matches A3), Settings/tray windows construct without crashing.
+- Not yet done: visually confirm Settings window layout/titlebar icon and tray icon transparency on-screen (attempted via automated screenshot but the singleton hide/show lifecycle fights raw Win32 `ShowWindow` calls — needs a manual look, see Manual-verify list).
+- **Compact widget height** (user-reported): the window's fixed `MinHeight="120"` (added in Workstream C for the Detailed skeleton) forced a ~120px window even in Compact mode, leaving a large empty area below the two bars. Moved the min-size floor out of XAML into code-behind `ApplyMinSizeForLayout()` (called from `OnLoaded` and on `WidgetLayoutMode` change): Detailed keeps the 120px floor for the skeleton, Compact uses 0 so the strip shrinks to content. Verified: Compact height 120 → **58px** (two bars, no empty space); Detailed skeleton still floors at 120 and renders fine.
+- **Widget over the taskbar** (user-reported): `KeepOnScreen()` clamped to the monitor **work area** (`rcWork`, excludes the taskbar), so the widget couldn't be placed on the taskbar. Switched the clamp to full monitor **bounds** (`rcMonitor`) — renamed `GetWorkAreaForWindow` → `GetMonitorBoundsForWindow` — so the widget can sit over the taskbar (it's a taskbar-style meter) while still stopping at the physical screen edge. `AnchorToBottomRight` still uses the work area for the default first-run position. A5's on-screen clamp intent is preserved; `ScreenMath`/tests unaffected (bounds are passed in). Verified: widget renders at y 1023–1081, overlapping the taskbar, no longer snapped up to the work-area edge.
+- **OpenCode Go tracking** (user question) — re-checked the public API surface as of July 2026: still **no** documented balance/usage endpoint. OpenCode issue [#10448](https://github.com/anomalyco/opencode/issues/10448) (opened Jan 2026) requests exactly a `GET /zen/v1/balance` endpoint but is open/unresolved with no PRs, and the web console's internal API is not publicly reverse-engineered. Workstream E therefore remains blocked on the **E.0 spike** (manual DevTools capture on `opencode.ai/auth`) — nothing has changed to unblock it via a documented API.
+
+**Manual-verify completed this session (via screen automation, driving the real UI — gear icon click, radio buttons, Save & Close):**
+- **A1** (singleton): clicked the widget's Settings gear 5× — only ever one `AiMeter Settings` hwnd exists. Save & Close correctly hides (not closes) it.
+- **A3** (no fake metrics): fresh run with no Claude login shows only "Auth Required" in both Detailed and Compact modes — never mock metric names.
+- **A5** (clamp, incidental): switching Detailed→Compact widened the widget and `KeepOnScreen()` correctly clamped its right edge to the screen boundary.
+- **A6** (logging): corrupted `settings.json` with garbage text — `SettingsManager.Load()` logged a full readable `JsonException` with file path, not a silent failure.
+- **B** (Settings layout): confirmed via `PrintWindow` capture — 920×520 window, 2-column layout (APPEARANCE+METRICS left, ALERTS+ACCOUNTS right) exactly as specced, titlebar shows the app icon, styled scrollbars visible, resize grip present.
+- **C** (skeleton/sizing): widget opens immediately at a small fixed size (not near-invisible) rather than waiting on the first poll.
+- **B** (Detailed/Compact toggle): switched via Settings radio + Save — widget re-rendered from rings to a horizontal bar layout correctly.
+
+**Still needs an actual manual look (automation couldn't reach it in this sandbox):**
+- Tray icon transparency against light/dark taskbar — this environment's system tray has an unrelated weather-widget flyout and overlay content that made automated screenshotting unreliable; the underlying `app.ico` is now confirmed as valid 32-bit RGBA at all 4 sizes, but the actual on-taskbar look wants a human glance.
+- A4 (screenshot self-heal) and A5 (manual drag-past-edge) — both need a real screenshot tool / real mouse drag, not simulated `SendInput` clicks.
+
 **Done & committed:**
 - Workstream **A** (all: A1, A2, A3, A4, A5, A6) — independent bug fixes.
 - Workstream **B** — Settings window rework (shared styles, 2-column layout, themed scrollbar, titlebar icon).
@@ -159,7 +180,37 @@ Independent; run any time before Workstream F's build sanity check.
 
 ## Workstream E — New provider: OpenCode (items 2 + 8, merged)
 
-**E.0 — research spike (do first, blocking):** No documented usage/balance API exists for opencode.ai. OpenCode Zen's documented endpoints (`/zen/v1/models`, `/responses`, `/messages`) are only for making model calls; OpenCode Go's usage is described as visible only in the web console at `opencode.ai/auth`. This means the same approach as Claude is needed: manually log into `opencode.ai/auth` in a real browser with DevTools Network tab open, and identify the actual JSON call the usage/balance widget makes (endpoint + response shape + session cookie name) — mirroring how `ClaudeWebProvider`'s `/api/organizations/{id}/usage` was originally reverse-engineered in this codebase. The local `opencode` CLI's `~/.local/share/opencode/auth.json` is a different surface (CLI provider credentials) and isn't useful here.
+> **STATUS (this session): DONE — implemented, reverse-engineered, and verified live.**
+> The OpenCode provider is complete and working end-to-end: logged into opencode.ai via the app's new
+> "Log into OpenCode" button, and the widget shows **OpenCode Rolling / Weekly / Monthly** with correct
+> live values (e.g. Rolling 96% remaining, resets 3h; Weekly 73%; Monthly 87%). Build 0 errors, **20/20
+> tests pass** (4 new `OpenCodeProviderTests` covering the two-step fetch + parse against the real payload
+> shape, incl. the `monthlyUsage:null` decoy).
+>
+> **How OpenCode Go usage actually works (reverse-engineered from a live session — supersedes the E.0
+> guesses below):** there is no JSON API. It's a SolidStart SSR app, two steps like Claude's org→usage:
+>   1. `GET /go` (authenticated) renders the user's workspace CTA `<a href="/workspace/{id}/go">` — scrape
+>      that path (so the workspace id is discovered, not hardcoded). `/go` alone is the public marketing page.
+>   2. `GET /workspace/{id}/go` embeds the stats in its SolidStart hydration payload as
+>      `rollingUsage:$R[n]={status:"ok",resetInSec:13824,usagePercent:4}` (+ `weeklyUsage`, `monthlyUsage`).
+>      `usagePercent` = percent used → RemainingQuota = 100 − used; `resetInSec` → ResetTime = now + seconds.
+> `OpenCodeProvider.ParseUsage` regexes those three objects (the `$R[n]=` seroval tag is optional; requiring
+> the `{` skips the unrelated `monthlyUsage:null` in the billing object).
+>
+> **Files added:** `Services/IProviderSession.cs`, `IOpenCodeSession.cs`, `OpenCodeSession.cs`,
+> `IOpenCodeApiClient.cs`, `OpenCodeApiClient.cs`, `Providers/OpenCodeProvider.cs`,
+> `Views/OpenCodeAuthWindow.xaml(.cs)`, `ViewModels/AccountRowViewModel.cs`, tests `OpenCodeProviderTests.cs`,
+> `Fakes/FakeOpenCodeSession.cs`, `Fakes/FakeOpenCodeApiClient.cs`. **Changed:** `AppConfig`
+> (`HasOpenCodeSession`), `IClaudeSession`/`ClaudeSession` (now implement `IProviderSession` + `ProviderName`),
+> `SettingsViewModel` (generalized `Accounts` collection), `SettingsWindow.xaml` (ACCOUNTS → `ItemsControl`),
+> `App.xaml.cs` (DI + dispose). The provider makes no network call / no WebView2 until login, so it's safe.
+> The three OpenCode metrics are discovered but not auto-selected (respecting an existing metric selection) —
+> enable them in Settings ▸ METRICS SHOWN.
+>
+> **Possible follow-ups:** multi-workspace users get the first `/workspace/.../go` link only; `OpenCodeSession.Store`
+> still marks the session on "any cookie present" (works, but could be tightened to the real cookie name).
+
+**E.0 — research spike (superseded by the STATUS block above — kept for history):** No documented usage/balance API exists for opencode.ai. OpenCode Zen's documented endpoints (`/zen/v1/models`, `/responses`, `/messages`) are only for making model calls; OpenCode Go's usage is described as visible only in the web console at `opencode.ai/auth`. This means the same approach as Claude is needed: manually log into `opencode.ai/auth` in a real browser with DevTools Network tab open, and identify the actual JSON call the usage/balance widget makes (endpoint + response shape + session cookie name) — mirroring how `ClaudeWebProvider`'s `/api/organizations/{id}/usage` was originally reverse-engineered in this codebase. The local `opencode` CLI's `~/.local/share/opencode/auth.json` is a different surface (CLI provider credentials) and isn't useful here.
 
 Once the spike identifies the real endpoint, implementation mirrors the existing `Claude*` pattern 1:1:
 - `Models/AppConfig.cs`: add `HasOpenCodeSession`.

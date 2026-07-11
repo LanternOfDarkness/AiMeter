@@ -4,8 +4,9 @@ A lightweight Windows desktop app that keeps your AI service usage limits visibl
 glance. AiMeter lives in the system tray and shows a small always-on-top widget that
 tracks remaining quota and reset timers across AI providers.
 
-The first release focuses on **Claude**, with an extensible provider architecture designed
-for OpenAI, Gemini, Grok, OpenRouter, DeepSeek, and others.
+It currently tracks **Claude** (claude.ai session/weekly limits) and **OpenCode**
+(opencode.ai Go rolling/weekly/monthly usage), side by side, on an extensible provider
+architecture designed for OpenAI, Gemini, Grok, OpenRouter, DeepSeek, and others.
 
 ![Widget – detailed](docs/image1.png)
 ![Widget – compact](docs/image2.png)
@@ -13,10 +14,14 @@ for OpenAI, Gemini, Grok, OpenRouter, DeepSeek, and others.
 
 ## Features
 
-- **Floating widget** — always-on-top, draggable, remembers its position.
+- **Multiple providers** — track Claude and OpenCode together; log into each under
+  Settings → Accounts. Deselect any metric you don't want on the widget.
+- **Floating widget** — always-on-top, draggable, remembers its position (and can sit over
+  the taskbar).
   - **Detailed** layout: circular rings per metric with remaining %, name, and reset time.
   - **Compact** layout: a slim strip of thin bars with % and a short reset label (`5h`, `2d 3h`).
-- **Right-click menu** on the widget: Refresh Now, Switch Layout, Settings, Hide.
+- **Widget controls** — hover the widget for Refresh / Settings / Switch Layout / Hide (they
+  fade in at the top-right), or right-click anywhere on it for the same menu.
 - **Reset countdowns** that stay live and format long windows as days + hours.
 - **System tray** app: show/hide widget, open settings, refresh, exit.
 - **Adjustable opacity** with an on-hover dim, or turn opacity off entirely.
@@ -39,6 +44,8 @@ for OpenAI, Gemini, Grok, OpenRouter, DeepSeek, and others.
 ### Requirements
 - Windows 10/11
 - [.NET 9 SDK](https://dotnet.microsoft.com/download)
+- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) — preinstalled
+  on Windows 11 and current Windows 10; both providers log in and fetch through it.
 
 ### Build & run
 ```powershell
@@ -46,9 +53,10 @@ dotnet build src/AiMeter/AiMeter.csproj
 dotnet run --project src/AiMeter/AiMeter.csproj
 ```
 
-On first run, open **Settings → Accounts** and log into Claude.ai to fetch your web usage
-limits. Authentication runs in an embedded browser; only a lightweight "logged in" marker
-is stored locally.
+On first run, open **Settings → Accounts** and log into Claude.ai and/or opencode.ai to
+fetch your usage limits — each provider has its own login row. Authentication runs in an
+embedded browser; only a lightweight "logged in" marker is stored locally (the real session
+lives in the WebView2 profile). Log into just the providers you use.
 
 ## Configuration
 
