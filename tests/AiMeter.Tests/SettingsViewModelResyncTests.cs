@@ -27,8 +27,9 @@ public class SettingsViewModelResyncTests
     {
         var session = new FakeClaudeSession();
         var openCodeSession = new FakeOpenCodeSession();
+        var openAiSession = new FakeOpenAiSession();
         var sp = new FakeServiceProvider();
-        return new SettingsViewModel(settings, manager, session, openCodeSession, startup, sp);
+        return new SettingsViewModel(settings, manager, session, openCodeSession, openAiSession, startup, sp);
     }
 
     [Fact]

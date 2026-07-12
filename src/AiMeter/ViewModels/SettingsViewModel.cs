@@ -42,8 +42,8 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     public SettingsViewModel(ISettingsManager settingsManager, IProviderManager providerManager,
-        IClaudeSession claudeSession, IOpenCodeSession openCodeSession, IStartupManager startupManager,
-        IServiceProvider serviceProvider)
+        IClaudeSession claudeSession, IOpenCodeSession openCodeSession, IOpenAiSession openAiSession,
+        IStartupManager startupManager, IServiceProvider serviceProvider)
     {
         _settingsManager = settingsManager;
         _providerManager = providerManager;
@@ -55,6 +55,9 @@ public partial class SettingsViewModel : ObservableObject
         Accounts.Add(new AccountRowViewModel(openCodeSession,
             () => serviceProvider.GetRequiredService<OpenCodeAuthWindow>(),
             "Requires logging into opencode.ai to fetch usage."));
+        Accounts.Add(new AccountRowViewModel(openAiSession,
+            () => serviceProvider.GetRequiredService<OpenAiAuthWindow>(),
+            "Requires an OpenAI Platform API key with billing read access to show credit balance."));
 
         foreach (var name in _providerManager.KnownMetricNames)
         {

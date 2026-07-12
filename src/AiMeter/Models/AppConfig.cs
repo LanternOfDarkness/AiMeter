@@ -35,6 +35,15 @@ public partial class AppConfig : ObservableObject
     [ObservableProperty]
     private bool _hasOpenCodeSession;
 
+    /// <summary>
+    /// The user's OpenAI Platform API key, DPAPI-encrypted (CurrentUser) and base64-encoded — the
+    /// OpenAI provider authenticates with a key rather than a browser session, so unlike the
+    /// Claude/OpenCode session markers this holds a real secret and must never be stored in clear.
+    /// Managed via <see cref="AiMeter.Services.OpenAiSession"/>; null/empty means "not configured."
+    /// </summary>
+    [ObservableProperty]
+    private string? _openAiApiKeyProtected;
+
     [ObservableProperty]
     private List<string> _selectedMetrics = new();
 

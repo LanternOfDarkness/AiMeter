@@ -32,10 +32,13 @@ public partial class App : Application
                 services.AddSingleton<IClaudeApiClient, ClaudeApiClient>();
                 services.AddSingleton<IOpenCodeSession, OpenCodeSession>();
                 services.AddSingleton<IOpenCodeApiClient, OpenCodeApiClient>();
+                services.AddSingleton<IOpenAiSession, OpenAiSession>();
+                services.AddSingleton<IOpenAiApiClient, OpenAiApiClient>();
 
                 // Register Providers
                 services.AddTransient<IProvider, ClaudeWebProvider>();
                 services.AddTransient<IProvider, OpenCodeProvider>();
+                services.AddTransient<IProvider, OpenAiProvider>();
 
                 // Register ViewModels
                 services.AddSingleton<TrayViewModel>();
@@ -47,6 +50,7 @@ public partial class App : Application
                 services.AddSingleton<Views.SettingsWindow>();
                 services.AddTransient<Views.AuthWindow>();
                 services.AddTransient<Views.OpenCodeAuthWindow>();
+                services.AddTransient<Views.OpenAiAuthWindow>();
             })
             .Build();
     }
@@ -90,6 +94,7 @@ public partial class App : Application
 
         (_host!.Services.GetService<IClaudeApiClient>() as IDisposable)?.Dispose();
         (_host!.Services.GetService<IOpenCodeApiClient>() as IDisposable)?.Dispose();
+        (_host!.Services.GetService<IOpenAiApiClient>() as IDisposable)?.Dispose();
 
         await _host!.StopAsync();
         _host.Dispose();
