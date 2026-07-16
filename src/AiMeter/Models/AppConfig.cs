@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AiMeter.Models;
@@ -38,8 +39,14 @@ public partial class AppConfig : ObservableObject
     [ObservableProperty]
     private List<string> _selectedMetrics = new();
 
+    // Serialized under a new JSON name ("LayoutMode", not "WidgetLayoutMode") deliberately:
+    // the old enum stored Detailed=0/Compact=1 as a bare number, and the new enum reuses
+    // value 1 for Taskbar. Keeping the old property name would silently reinterpret a
+    // pre-upgrade user's saved "Compact" (1) as "Taskbar" on load. The stale field is now
+    // just an unknown property that System.Text.Json ignores.
     [ObservableProperty]
-    private WidgetLayoutMode _widgetLayoutMode = WidgetLayoutMode.Detailed;
+    [property: JsonPropertyName("LayoutMode")]
+    private WidgetLayoutMode _widgetLayoutMode = WidgetLayoutMode.Compact;
 
     [ObservableProperty]
     private bool _showOverFullscreen = true;

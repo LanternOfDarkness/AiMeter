@@ -1,31 +1,116 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:controls="clr-namespace:AiMeter.Controls"
                     xmlns:converters="clr-namespace:AiMeter.Converters">
 
     <converters:QuotaToColorConverter x:Key="QuotaToColorConverter" />
     <converters:ResetTimeConverter x:Key="ResetTimeConverter" />
+    <converters:PercentageToWidthConverter x:Key="PercentageToWidthConverter" />
+    <converters:MetricLabelConverter x:Key="MetricLabelConverter" />
+    <converters:TimeBarFractionConverter x:Key="TimeBarFractionConverter" />
 
-    <!-- Detailed (rings) mode: one tile per metric. Extracted from WidgetWindow.xaml so the
-         spacing/typography can be refined in one place and shared if needed. -->
-    <DataTemplate x:Key="DetailedMetricTile">
-        <StackPanel Margin="14,0,14,0" ToolTip="{Binding Name}">
-            <controls:CircularProgress Size="68" StrokeThickness="5"
-                                       Percentage="{Binding RemainingPercentage}"
-                                       ValueText="{Binding RemainingPercentage, StringFormat={}{0:0}}"
-                                       ForegroundBrush="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}" />
-            <TextBlock Text="{Binding Name}" Foreground="White"
-                       HorizontalAlignment="Center" Margin="0,9,0,0" FontSize="12"
-                       MaxWidth="84" TextTrimming="CharacterEllipsis" />
-            <TextBlock Foreground="#AAAAAA" HorizontalAlignment="Center" Margin="0,2,0,0" FontSize="10">
+    <!-- Dark-themed to match the widget - WPF's default ToolTip chrome is a light box with
+         black text, which reads as a jarring mismatch popping up over an otherwise all-dark
+         widget. Applies to every ToolTip in the widget (Compact's plain-string ones too). -->
+    <Style TargetType="ToolTip">
+        <Setter Property="Background" Value="#EE202024" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="BorderBrush" Value="#33FFFFFF" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="6,4" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="HasDropShadow" Value="True" />
+    </Style>
+
+    <!-- Taskbar mode: one narrow vertical-fill column per metric, sized to sit at taskbar
+         height. Code, remaining percentage, and reset countdown are all always visible (a
+         column is only ~28px wide, so a couple of digits per row costs almost nothing) - the
+         tooltip's full name and verbose reset text are the only hover-only extras. Both fills
+         are plain Borders stretched to the full available height, then visually scaled from
+         the bottom via a ScaleTransform - simpler than computing pixel heights against a
+         window height that varies with the detected taskbar thickness. -->
+    <DataTemplate x:Key="TaskbarMetricColumn">
+        <Grid Width="28" Margin="2,0,2,0">
+            <Grid.ToolTip>
+                <StackPanel>
+                    <TextBlock>
+                        <TextBlock.Text>
+                            <MultiBinding StringFormat="{}{0} — {1:0}%">
+                                <Binding Path="Name" />
+                                <Binding Path="RemainingPercentage" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                    <TextBlock>
+                        <TextBlock.Text>
+                            <MultiBinding Converter="{StaticResource ResetTimeConverter}">
+                                <Binding Path="ResetTime" />
+                                <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                </StackPanel>
+            </Grid.ToolTip>
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="{Binding Name, Converter={StaticResource MetricLabelConverter}}"
+                       Foreground="#CCCCCC" FontSize="8" HorizontalAlignment="Center" Margin="0,0,0,1" />
+
+            <Grid Grid.Row="1" ClipToBounds="True">
+                <!-- Track -->
+                <Border CornerRadius="2" Background="#33FFFFFF" />
+
+                <!-- Quota fill: bottom-anchored scale, colored by remaining quota. -->
+                <Border CornerRadius="2" Background="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}"
+                        RenderTransformOrigin="0.5,1">
+                    <Border.RenderTransform>
+                        <ScaleTransform ScaleY="{Binding RemainingPercentage, Converter={StaticResource PercentageToWidthConverter}, ConverterParameter=1}" />
+                    </Border.RenderTransform>
+                </Border>
+
+                <!-- Time-progress sliver: fills as the reset approaches, hugging the right edge. -->
+                <Rectangle Width="2" HorizontalAlignment="Right" Fill="#55FFFFFF" Margin="0,0,1,0"
+                           RenderTransformOrigin="0.5,1">
+                    <Rectangle.RenderTransform>
+                        <ScaleTransform>
+                            <ScaleTransform.ScaleY>
+                                <MultiBinding Converter="{StaticResource TimeBarFractionConverter}">
+                                    <Binding Path="ResetTime" />
+                                    <Binding Path="WindowDuration" />
+                                    <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                </MultiBinding>
+                            </ScaleTransform.ScaleY>
+                        </ScaleTransform>
+                    </Rectangle.RenderTransform>
+                </Rectangle>
+
+                <!-- Remaining percentage, always visible - sits just under the code label, on
+                     top of the fill/track regardless of how full the bar is. -->
+                <TextBlock Text="{Binding RemainingPercentage, StringFormat={}{0:0}}"
+                           FontSize="9" FontWeight="SemiBold" Foreground="White"
+                           HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0">
+                    <TextBlock.Effect>
+                        <DropShadowEffect BlurRadius="2" ShadowDepth="0" Opacity="0.9" Color="Black" />
+                    </TextBlock.Effect>
+                </TextBlock>
+            </Grid>
+
+            <!-- Reset countdown, always visible - "3.3h"/"5.2d" style keeps it a consistent,
+                 narrow width instead of a multi-unit compound like "3h20m". -->
+            <TextBlock Grid.Row="2" Foreground="#999999" FontSize="7"
+                       HorizontalAlignment="Center" Margin="0,1,0,0">
                 <TextBlock.Text>
-                    <MultiBinding Converter="{StaticResource ResetTimeConverter}">
+                    <MultiBinding Converter="{StaticResource ResetTimeConverter}" ConverterParameter="decimal">
                         <Binding Path="ResetTime" />
                         <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
                     </MultiBinding>
                 </TextBlock.Text>
             </TextBlock>
-        </StackPanel>
+        </Grid>
     </DataTemplate>
 
 </ResourceDictionary>

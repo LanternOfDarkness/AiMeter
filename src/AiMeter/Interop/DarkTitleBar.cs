@@ -1,6 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Interop;
 
 namespace AiMeter.Interop;
 
@@ -13,9 +11,14 @@ internal static class DarkTitleBar
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(nint hwnd, int attribute, ref int pvAttribute, int cbAttribute);
 
-    public static void Apply(Window window)
+    /// <summary>
+    /// Applies dark-mode to an already-created HWND. Callers must hook
+    /// <c>SourceInitialized</c> rather than call this from the constructor - resolving the
+    /// HWND eagerly (via <c>EnsureHandle()</c>) forces window creation before <c>Show()</c>,
+    /// which leaves a hidden HWND that Alt+Tab can pick up if the window is never shown.
+    /// </summary>
+    public static void ApplyToHwnd(nint hwnd)
     {
-        var hwnd = new WindowInteropHelper(window).EnsureHandle();
         var useDark = 1;
         if (DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref useDark, sizeof(int)) != 0)
         {

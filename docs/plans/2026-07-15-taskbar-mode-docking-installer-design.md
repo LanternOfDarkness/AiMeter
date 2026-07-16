@@ -1,6 +1,6 @@
 # Taskbar mode, bottom-docking, installer & polish — design
 
-**Date:** 2026-07-15
+**Date:** 2026-07-15 (verified against codebase & corrected 2026-07-16)
 **Status:** Approved (sections 1–4 approved by user; sections 5–6 filled from gathered decisions with recommended defaults)
 
 ## Overview
@@ -57,13 +57,18 @@ Move the DWM attribute call off the eager-construction path:
 - `DarkTitleBar.Apply(Window)` → split into `ApplyToHwnd(IntPtr)`, drop `EnsureHandle()`.
 - Each window calls it from `SourceInitialized` (fires once, after the HWND is naturally
   created on `Show()`) instead of the constructor.
-  - `WidgetWindow` already has `OnSourceInitialized` — add the one line there.
   - `SettingsWindow` / `AuthWindow` / `OpenCodeAuthWindow` hook `SourceInitialized` in the
     ctor (or override `OnSourceInitialized`).
+  - `WidgetWindow` does **not** call `DarkTitleBar` today and doesn't need to — it's
+    borderless (`WindowStyle="None"`), there's no title bar to darken. No change there.
 
 The DWM attribute is per-HWND and persists once set; applying it post-creation is identical
 to applying it pre-creation. No window gets a ghost HWND at startup. Auth windows are
 transient (constructed only on login click, shown immediately) so they never linger hidden.
+
+**Verification note:** whether a hidden, never-shown HWND appears in Alt+Tab is empirical
+(known WPF ghost-window phenomenon, but Alt+Tab heuristics vary by Windows build). The fix is
+correct and harmless regardless; after implementing, confirm the ghosts are actually gone.
 
 ### Edge case — `H.NotifyIcon.ForceCreate()`
 
@@ -74,7 +79,6 @@ needed there.
 ### Files
 
 - `src/AiMeter/Interop/DarkTitleBar.cs` — remove `EnsureHandle()`, expose `ApplyToHwnd(IntPtr)`.
-- `src/AiMeter/Views/WidgetWindow.xaml.cs` — call in `OnSourceInitialized`.
 - `src/AiMeter/Views/SettingsWindow.xaml.cs` — hook `SourceInitialized`.
 - `src/AiMeter/Views/AuthWindow.xaml.cs` — hook `SourceInitialized`.
 - `src/AiMeter/Views/OpenCodeAuthWindow.xaml.cs` — hook `SourceInitialized`.
@@ -98,9 +102,10 @@ Detailed-mode scaffolding. Cleaner than leaving a one-mode toggle as dead UI.
      `Visibility` binding.
    - Delete the `⇅` layout-toggle button (line 155) and the "Switch Layout" context-menu
      item (lines 56–57).
-   - Remove the `EnumToVisibilityConverter` resource (line 26) if no other user remains.
-     Remove `InverseBooleanToVisibilityConverter` (line 29) if only the Detailed skeleton
-     used it — verify before deleting.
+   - **Keep** the `EnumToVisibilityConverter` resource (line 26) and
+     `InverseBooleanToVisibilityConverter` (line 29) even though Section 2 removes their last
+     users — Section 3's loading skeleton needs the inverse-bool converter and Section 4's
+     Compact/Taskbar templates need the enum converter. Deleting then re-adding is churn.
 4. **`Views/WidgetWindow.xaml.cs`**:
    - Delete `ApplyMinSizeForLayout()` (lines 247–252) and the `DetailedMinSize` constant.
    - Delete the `WidgetLayoutMode` branch in `Config_PropertyChanged` (lines 420–425).
@@ -110,18 +115,32 @@ Detailed-mode scaffolding. Cleaner than leaving a one-mode toggle as dead UI.
 6. **`Controls/CircularProgress.xaml` + `.xaml.cs`** — delete both files.
 7. **`ViewModels/WidgetViewModel.cs`** — delete `ToggleLayout()` (lines 71–77) and its
    `[RelayCommand]`.
-8. **`Views/SettingsWindow.xaml`** — drop the layout-mode radio group in the Appearance
-   section.
-9. **`tests/AiMeter.Tests`** — update any `WidgetLayoutMode.Detailed` / toggle assertions
-   (`SettingsViewModelResyncTests`, etc.).
+8. **`Views/SettingsWindow.xaml`** — drop the "Widget Format" radio group (lines 68–75).
+   Its `EnumToBooleanConverter` becomes unused until Section 4 reinstates the radios — keep it.
+9. **`tests/AiMeter.Tests`** — no-op: verified no test references `WidgetLayoutMode` or
+   `ToggleLayout` (grepped; `SettingsViewModelResyncTests` has no layout assertions).
 
-### Settings migration
+### Settings migration (corrected)
 
-Deleting the enum means a v1.0.1 `settings.json` with `"WidgetLayoutMode": "Detailed"` will
-fail to deserialize. Handle with a forgiving load: ignore unknown enum values and default to
-`Compact` (the post-removal default). The `SettingsManager.Load()` already wraps JSON parsing
-in a try/catch that falls back to defaults — extend that to tolerate the stale field rather
-than discarding the whole file.
+The enum is serialized as a **number**, not a string — `AppConfig` has no
+`JsonStringEnumConverter`, so a v1.0.1 `settings.json` contains `"WidgetLayoutMode": 0`
+(Detailed) or `1` (Compact) (confirmed against a live settings file).
+
+Consequences:
+
+- **Section 2 (property deleted):** no failure at all — System.Text.Json silently ignores
+  unknown properties. No "forgiving load" work is needed; `SettingsManager.Load()` is fine
+  as-is.
+- **Section 4 (property reintroduced) — the real trap:** with `Compact=0, Taskbar=1`, a
+  stale `"WidgetLayoutMode": 1` (old Compact) silently deserializes as **Taskbar**, booting
+  existing Compact users into the new mode unasked. Numbers deserialize into any enum without
+  error, so nothing catches this.
+
+**Fix:** reintroduce the property under a new JSON name — either rename the C# property
+(e.g. `LayoutMode`) or keep the name and add `[JsonPropertyName("LayoutMode")]`. The stale
+`WidgetLayoutMode` field is then ignored and every upgrading user lands on the default
+`Compact`. Optionally add `JsonStringEnumConverter` on the new property so future values
+serialize as strings.
 
 ### What stays
 
@@ -164,9 +183,11 @@ Only "no account at all" triggers the log-in surface.
 ### Click handling
 
 The empty-state `Border` has a `MouseLeftButtonDown` handler that calls the existing
-`OpenSettingsCommand`. It does **not** start a `DragMove` — a click is a click, not a drag.
-Dragging still works via the surrounding border margin. The hover-controls overlay
-(Refresh/Settings/Hide) stays on top as today; the empty-state click coexists with the gear.
+`OpenSettingsCommand` and sets `e.Handled = true` — required, because the window-level
+`MouseLeftButtonDown` handler (`Window_MouseLeftButtonDown`) starts a `DragMove` and would
+otherwise still fire on the same click. A click is a click, not a drag. Dragging still works
+via the surrounding border margin. The hover-controls overlay (Refresh/Settings/Hide) stays
+on top as today; the empty-state click coexists with the gear.
 
 ### Loading state
 
@@ -176,17 +197,21 @@ the first poll. No shimmer animation; static grey placeholder.
 
 ### Settings deep-link
 
-`SettingsWindow.ShowOrActivate()` currently just shows. Add a `focusAccounts` overload (or
-`ShowOrActivate(string section)`) so the empty-state click lands on the Accounts tab rather
-than Appearance. Low cost; matches the "log in required" intent.
+**Correction:** SettingsWindow has no tabs — it's a single page; "Accounts" is a section
+header in the right column (`SettingsWindow.xaml:98,133`). There is nothing to "land on";
+`ShowOrActivate()` already surfaces the whole page including Accounts. Skip the deep-link
+overload; if a stronger cue is wanted later, a brief highlight/scroll of the Accounts section
+is the follow-up, not a tab switch.
 
 ### Files
 
-- `ViewModels/WidgetViewModel.cs` — add `IsEmptyState`; reuse `OpenSettingsCommand` (or add
-  `OpenSettingsFromEmpty` that passes the Accounts hint).
+- `ViewModels/WidgetViewModel.cs` — add `IsEmptyState`; reuse `OpenSettingsCommand`.
+  Note: `IsEmptyState` must raise change notification when `Config.HasClaudeSession` /
+  `Config.HasOpenCodeSession` change (hook `Config.PropertyChanged`) and when
+  `HasFetchedOnce` flips — none of these are `[ObservableProperty]` dependencies of the VM.
 - `Views/WidgetWindow.xaml` — new empty-state + loading-skeleton templates, wired via
   `Visibility` bindings.
-- `Views/SettingsWindow.xaml.cs` — deep-link overload.
+- `Views/SettingsWindow.xaml.cs` — unchanged (deep-link dropped, see above).
 - `AppConfig`/sessions unchanged — the signals already exist.
 
 ---
@@ -209,6 +234,10 @@ cycling Compact ↔ Taskbar.
 `elapsed / WindowDuration = (now - (ResetTime - WindowDuration)) / WindowDuration`, clamped
 0→1. When `WindowDuration` is null, the time bar collapses. Pure additive field — no
 migration concern.
+
+**Required:** `UsageMetric.UpdateFrom()` must copy `WindowDuration` too —
+`ProviderManager.SyncMetrics` updates existing instances in place via `UpdateFrom`, so a
+missed copy means the field is never set on any poll after a metric's first insert.
 
 ### 4b. Column template
 
@@ -236,17 +265,22 @@ fixed taskbar height (~40–48px):
 
 ### 4c. 3-letter codes
 
-A per-metric-name → code map, explicit in a shared `MetricCodes` helper or
-`MetricLabelConverter` the template binds through:
+A shared `MetricCodes` helper or `MetricLabelConverter` the template binds through.
+**Correction:** exact-name lookup won't work — several names are dynamic. Scoped weeklies
+render as `"Claude Weekly (Opus)"` / `"Claude Weekly (Scoped)"` (model name embedded,
+`ClaudeWebProvider.NameForLimit`), unknown Claude kinds fall back to `"Claude {kind}"`, and
+placeholder tiles have names like `"OpenCode (Auth Required)"`, `"Session Expired"`,
+`"Error Fetching"`. Match by **prefix/pattern**, longest-prefix-first:
 
-| Metric name | Code |
-|-------------|------|
-| Claude Session | CSE |
-| Claude Weekly | CWK |
-| Claude Weekly (scoped) | CWS |
-| OpenCode Rolling | OCR |
-| OpenCode Weekly | OCW |
-| OpenCode Monthly | OCM |
+| Name pattern | Code |
+|--------------|------|
+| `Claude Session` | CSE |
+| `Claude Weekly (…)` (any scoped variant) | CWS |
+| `Claude Weekly` | CWK |
+| `OpenCode Rolling` | OCR |
+| `OpenCode Weekly` | OCW |
+| `OpenCode Monthly` | OCM |
+| Error/auth placeholders (`… Required`, `… Expired`, `… Error …`) | `!` glyph or `ERR` |
 
 Future providers (OpenAI, Gemini, Grok) get their own prefixes (OAI, GEM, GRK). Unknown names
 fall back to a 3-letter truncation of the name.
@@ -255,22 +289,34 @@ fall back to a 3-letter truncation of the name.
 
 Taskbar mode changes `WidgetWindow`'s behavior alongside its template:
 
-- **Fixed height:** Detect taskbar thickness as `WorkArea.Bottom - MonitorBounds.Bottom` for
-  the widget's monitor (both available via `GetMonitorBoundsForWindow` +
-  `SystemParameters.WorkArea`). Widget height = that value (typically 40–48px) minus a small
-  margin so it sits *above* the taskbar, not overlapping. **Simple version: dock to the
-  bottom edge of the work area regardless of taskbar edge (top/left/right); default to 40px
-  if edge detection is fiddly.** (Recommended default; robust edge detection is a follow-up.)
-- **Dock to bottom of work area:** `Top = WorkArea.Bottom - WidgetHeight`. `Left` is
-  user-draggable horizontally (persist `WidgetLeft` only in Taskbar mode; ignore `WidgetTop`
-  and recompute it on every layout/size/startup change). **Vertical dragging is disabled
-  entirely** — it's a dock, not a free-floating window. (Recommended default.)
+- **Fixed height:** Detect taskbar thickness as `MonitorBounds.Bottom - WorkArea.Bottom`
+  (monitor bottom minus work-area bottom — corrected sign) **for the widget's monitor**.
+  `SystemParameters.WorkArea` is primary-monitor-only, so it can't be used here on a
+  secondary display: extend `GetMonitorBoundsForWindow` to also return `rcWork` from the
+  `MONITORINFO` it already fetches (one struct read, both rects). Widget height = that value
+  (typically 40–48px) minus a small margin so it sits *above* the taskbar, not overlapping.
+  **Simple version: dock to the bottom edge of the work area regardless of taskbar edge
+  (top/left/right); default to 40px if edge detection is fiddly.** (Recommended default;
+  robust edge detection is a follow-up.)
+  - **Height budget caveat:** `RootBorder` carries `Margin="6"` (12px total, reserved for
+    the drop shadow) plus configurable padding — inside a ~40px window that leaves ~28px of
+    content, and the hover-controls pill (~24px tall) would cover most of it. Taskbar mode
+    needs slimmer chrome: reduce/remove the shadow margin and shrink or reposition the
+    hover overlay in this mode. Decide during template work.
+- **Dock to bottom of work area:** `Top = WorkArea.Bottom - WidgetHeight` (per-monitor work
+  area, as above). `Left` is user-draggable horizontally (persist `WidgetLeft` only in
+  Taskbar mode; ignore `WidgetTop` and recompute it on every layout/size/startup change).
+  **Vertical dragging is disabled entirely** — it's a dock, not a free-floating window.
+  Note `DragMove()` moves both axes and can't be constrained mid-drag: after the drag ends,
+  the Taskbar-mode handler must actively **re-force `Top` back to the dock position** (not
+  merely skip clamping it) before persisting `Left`.
 - **Re-anchor on:** `OnLoaded`, `SizeChanged`, `WidgetLayoutMode` change, and a
   `SystemParameters.StaticPropertyChanged` hook for `WorkArea` (covers resolution/DPI/
   taskbar-height changes on the current monitor). Each recompute re-clamps `Left` into the
   monitor's horizontal bounds.
-- **`KeepOnScreen`:** In Taskbar mode, only clamp `Left` (horizontal); never touch `Top`.
-  Compact mode unchanged.
+- **`KeepOnScreen`:** In Taskbar mode, clamp `Left` (horizontal) and **reset `Top` to the
+  dock position** (see drag note above — "never touch Top" isn't enough once a `DragMove`
+  has moved it). Compact mode unchanged.
 - **Topmost/self-heal:** Unchanged — Taskbar mode is still an always-on-top tool window;
   the existing hook layer applies.
 
@@ -293,15 +339,18 @@ single greyed 2px-wide column placeholder.
 ### Files
 
 - `Models/WidgetLayoutMode.cs` — reintroduce with `Compact`, `Taskbar`.
-- `Models/AppConfig.cs` — reintroduce `WidgetLayoutMode` property (default `Compact`).
-- `Models/UsageMetric.cs` — add `WindowDuration`.
+- `Models/AppConfig.cs` — reintroduce the layout property (default `Compact`) **under a new
+  JSON name** (see Section 2 migration note) so stale numeric values can't map old Compact
+  users into Taskbar mode.
+- `Models/UsageMetric.cs` — add `WindowDuration` **and copy it in `UpdateFrom()`**.
 - `Providers/ClaudeWebProvider.cs` / `OpenCodeProvider.cs` — populate `WindowDuration` per kind.
 - `Converters/MetricLabelConverter.cs` (new) — name → 3-letter code.
 - `Converters/TimeBarFractionConverter.cs` (new) — `(ResetTime, WindowDuration, Now)` → 0–1.
 - `Styles/WidgetStyles.xaml` — new `TaskbarMetricColumn` template.
 - `Views/WidgetWindow.xaml` — Taskbar `ItemsControl`, empty-state + loading templates.
 - `Views/WidgetWindow.xaml.cs` — `ApplyModeBehavior`, dock/re-anchor logic, `KeepOnScreen`
-  branching, `SystemParameters.StaticPropertyChanged` hook.
+  branching, `SystemParameters.StaticPropertyChanged` hook; extend
+  `GetMonitorBoundsForWindow` to return the per-monitor `rcWork` alongside `rcMonitor`.
 - `ViewModels/WidgetViewModel.cs` — reintroduce `ToggleLayout` (Compact ↔ Taskbar).
 - `Views/SettingsWindow.xaml` — layout radio (Compact / Taskbar).
 
@@ -346,8 +395,9 @@ logs" checkbox.
 - `[Icons]` Start menu + optional Desktop shortcuts.
 - `[Registry]` autorun entry (gated by the checkbox task).
 - `[UninstallRun]` / `[UninstallDelete]` cleanup.
-- Version pulled from `AiMeter.csproj` `<Version>` via Inno's `#define` + `GetValue` or a
-  pre-build script that writes the version into the `.iss`.
+- Version: read from the **published `AiMeter.exe`** via Inno's `GetVersionNumbersString()`
+  preprocessor function (`FileVersion` is set in the csproj, currently 1.0.1) — simpler and
+  less brittle than parsing csproj XML from the `.iss`.
 
 ### Build/publish flow
 
@@ -386,8 +436,39 @@ README; can be wired into a release script later.
 
 ## Open inputs / follow-ups
 
-- `docs/taskbar.png` screenshot (Section 6) — capture after implementation.
+- `docs/taskbar.png` screenshot (Section 6) — captured 2026-07-16 as `docs/taskbar-mode.png`
+  (along with `docs/compact-mode.png` and a refreshed `docs/settings.png`).
 - Robust taskbar-edge detection (top/left/right) — deferred; simple bottom dock ships first.
 - Full installer signing — not in scope; unsigned installer shows SmartScreen warning on
   first run (acceptable for a personal project; revisit if distributing widely).
+- **Self-contained ("full") installer** — the shipped installer (`installer/aimeter.iss`) is
+  deliberately framework-dependent with a runtime prerequisite check/download (keeps it
+  ~15–25 MB, per Section 5's decision). A future version should offer a self-contained
+  variant that bundles the .NET runtime (and WebView2, if feasible) directly into the
+  installer, trading a larger download (~100 MB+) for zero network dependency at install
+  time and no PowerShell-download fallback path — useful for offline machines or
+  environments where `aka.ms`/`go.microsoft.com` are blocked. Likely a second `[Setup]`
+  section/build config in the same `.iss`, or a sibling `aimeter-full.iss`, driven by
+  `dotnet publish --self-contained true -r win-x64`.
 - Target version number for the installer/release tag — confirm before cutting a release.
+
+---
+
+## Verification log (2026-07-16)
+
+Plan verified against the codebase; corrections folded in above. Summary:
+
+- **Confirmed accurate:** Section 1 root-cause chain (eager DI construction of the singleton
+  `SettingsWindow` via `WidgetViewModel` ctor; `EnsureHandle()` in `DarkTitleBar.Apply`);
+  every Section 2 line reference; `HasClaudeSession`/`HasOpenCodeSession` signals and their
+  session-service writers; provider metric kinds/names; `StartupManager`'s quoted-path HKCU
+  Run entry; csproj `<Version>1.0.1</Version>`.
+- **Corrected:** settings migration premise (enum stored as *number*; real risk is the
+  Section 4 value collision, fixed via new JSON property name); `UpdateFrom` must copy
+  `WindowDuration`; taskbar-height formula sign + per-monitor work area (`rcWork`, not
+  primary-only `SystemParameters.WorkArea`); Taskbar-mode drag must re-force `Top` after
+  `DragMove`; metric-code map needs prefix matching (scoped weekly names are dynamic);
+  no Accounts tab exists (deep-link dropped); `WidgetWindow` needs no `DarkTitleBar` call;
+  test-update step is a no-op; keep the two widget converters through Section 2; Taskbar
+  height budget vs. shadow margin + hover overlay flagged; Inno version read from the
+  published exe.

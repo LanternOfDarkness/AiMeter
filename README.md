@@ -8,22 +8,27 @@ It currently tracks **Claude** (claude.ai session/weekly limits) and **OpenCode*
 (opencode.ai Go rolling/weekly/monthly usage), side by side, on an extensible provider
 architecture designed for OpenAI, Gemini, Grok, OpenRouter, DeepSeek, and others.
 
-![Widget – detailed](docs/image1.png)
-![Widget – compact](docs/image2.png)
+![Widget – Taskbar mode](docs/taskbar-mode.png)
+![Widget – Compact mode](docs/compact-mode.png)
 ![Settings](docs/settings.png)
 
 ## Download
 
-**Latest release: v1.0.1** —
-[AiMeter-v1.0.1-win-x64.zip](https://github.com/LanternOfDarkness/AiMeter/releases/download/v1.0.1/AiMeter-v1.0.1-win-x64.zip)
+**Latest release: v1.1.0** —
+[AiMeter-v1.1.0-win-x64.zip](https://github.com/LanternOfDarkness/AiMeter/releases/download/v1.1.0/AiMeter-v1.1.0-win-x64.zip)
 
 ```
-SHA-256: F3EC19D535BC044BE443D0643D07EEBCB97EC74DFAE104C0E637B390572C80B4
+SHA-256: 31EB6A954245536D8128A265BFF626EC855806A203C7981ED25A8422258B36A1
 ```
 
 Framework-dependent build for **win-x64** — needs the .NET 9 Desktop Runtime and the WebView2
 Runtime (see [Requirements](#requirements)). Extract the zip and run `AiMeter.exe`.
-Verify the download with `Get-FileHash AiMeter-v1.0.1-win-x64.zip -Algorithm SHA256`.
+Verify the download with `Get-FileHash AiMeter-v1.1.0-win-x64.zip -Algorithm SHA256`.
+
+An Inno Setup installer (`installer/aimeter.iss`) is also available in this repo — see
+[Installation](#installation) to build and run it locally. It isn't code-signed, so Windows
+SmartScreen will warn on first run; a signed, hosted installer release is tracked as a
+follow-up (see [docs/design.md](docs/design.md)).
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
@@ -33,8 +38,14 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes.
   Settings → Accounts. Deselect any metric you don't want on the widget.
 - **Floating widget** — always-on-top, draggable, remembers its position (and can sit over
   the taskbar).
-  - **Detailed** layout: circular rings per metric with remaining %, name, and reset time.
   - **Compact** layout: a slim strip of thin bars with % and a short reset label (`5h`, `2d 3h`).
+  - **Taskbar** layout: docks flush against the bottom of the screen, overlapping the
+    taskbar — one thin vertical-fill column per metric showing a 3-letter code, the quota
+    fill, the remaining % and a compact reset countdown (`3.3h`, `5.2d`) all at rest; hover a
+    column for the full name and verbose reset time.
+- **Log in required** — once the first poll completes, if no provider is logged in at all the
+  widget shows a single "Log in required" call-to-action (instead of per-provider error
+  tiles); click it to jump straight to Settings.
 - **Widget controls** — hover the widget for Refresh / Settings / Switch Layout / Hide (they
   fade in at the top-right), or right-click anywhere on it for the same menu.
 - **Reset countdowns** that stay live and format long windows as days + hours.
@@ -57,6 +68,9 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes.
 | 0–10%     | Dark red |
 | Unknown   | Gray |
 
+**Time bar** (Taskbar mode only): a thin sliver alongside each column's quota fill that fills
+as the reset approaches — empty right after a reset, full just before the next one.
+
 ## Getting started
 
 ### Requirements
@@ -70,6 +84,21 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes.
 dotnet build src/AiMeter/AiMeter.csproj
 dotnet run --project src/AiMeter/AiMeter.csproj
 ```
+
+### Installation
+
+To build the installer instead of running from source, publish a framework-dependent
+build and compile it with [Inno Setup 6](https://jrsoftware.org/isinfo.php):
+```powershell
+dotnet publish src/AiMeter/AiMeter.csproj -c Release -r win-x64 --self-contained false -o publish/win-x64
+iscc installer/aimeter.iss
+```
+This produces `installer/Output/AiMeter-setup-x64.exe`. Running it installs AiMeter to
+`%LocalAppData%\Programs\AiMeter` — per-user, no admin/UAC prompt — with optional "Launch at
+Windows startup" and desktop-shortcut checkboxes (both checked by default), and it checks
+for and silently installs the .NET 9 Desktop Runtime and WebView2 Runtime prerequisites if
+they're missing. Uninstalling removes the app but leaves `%AppData%\AiMeter` (your settings
+and logs) untouched by default; you're asked once whether to remove those too.
 
 On first run, open **Settings → Accounts** and log into Claude.ai and/or opencode.ai to
 fetch your usage limits — each provider has its own login row. Authentication runs in an

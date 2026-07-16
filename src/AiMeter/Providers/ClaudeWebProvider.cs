@@ -99,10 +99,18 @@ public class ClaudeWebProvider : IProvider
                 Name = NameForLimit(kind, limit),
                 TotalQuota = 100,
                 RemainingQuota = Math.Max(0, 100 - percentUsed),
-                ResetTime = resetsAt
+                ResetTime = resetsAt,
+                WindowDuration = WindowDurationForKind(kind)
             };
         }
     }
+
+    private static TimeSpan? WindowDurationForKind(string? kind) => kind switch
+    {
+        "session" => TimeSpan.FromHours(5),
+        "weekly_all" or "weekly_scoped" => TimeSpan.FromDays(7),
+        _ => null
+    };
 
     private static string NameForLimit(string? kind, JsonElement limit) => kind switch
     {

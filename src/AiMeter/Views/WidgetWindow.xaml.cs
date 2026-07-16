@@ -84,10 +84,10 @@ public partial class WidgetWindow : Window
         public uint flags;
     }
 
-    // Minimum window size floor, applied only in Detailed mode where the first-run skeleton
-    // would otherwise let the window open near-invisible. Compact mode uses no floor so the
-    // slim bar strip can shrink to fit within a taskbar's height (see ApplyMinSizeForLayout).
-    private const double DetailedMinSize = 120;
+    // Fallback Taskbar-mode height when the taskbar thickness can't be detected for the
+    // widget's current monitor (see GetTaskbarHeight) - robust edge detection (top/left/right
+    // taskbars) is a follow-up; this covers the common bottom-taskbar case directly.
+    private const double DefaultTaskbarHeight = 40;
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -142,6 +142,7 @@ public partial class WidgetWindow : Window
         {
             _selfHealTimer?.Stop();
             RemoveForegroundHook();
+            SystemParameters.StaticPropertyChanged -= SystemParameters_StaticPropertyChanged;
         };
 
         // Opacity depends on config (enabled/level) which can change live from the
@@ -233,22 +234,67 @@ public partial class WidgetWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        ApplyMinSizeForLayout();
+        ApplyModeBehavior();
         ApplyInitialPosition();
         ApplyOpacity();
         StartSelfHealTimer();
+
+        // Covers resolution/DPI/taskbar-thickness changes on the current monitor - Taskbar
+        // mode's docked height and position both depend on the work area.
+        SystemParameters.StaticPropertyChanged += SystemParameters_StaticPropertyChanged;
+    }
+
+    private void SystemParameters_StaticPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SystemParameters.WorkArea))
+        {
+            Dispatcher.BeginInvoke(ApplyModeBehavior);
+        }
     }
 
     /// <summary>
-    /// Applies the Detailed-mode min-size floor (needed by the first-run skeleton) or clears
-    /// it in Compact mode, where the widget is a slim strip meant to sit within a taskbar's
-    /// height — a fixed floor there would leave a large empty area below the bars.
+    /// Applies the current <see cref="WidgetLayoutMode"/>'s window behavior: Taskbar mode
+    /// gets a fixed height (docked to the physical bottom of the screen, overlapping the
+    /// taskbar - see <see cref="KeepOnScreen"/>) with only the width auto-sizing; Compact
+    /// mode auto-sizes both.
     /// </summary>
-    private void ApplyMinSizeForLayout()
+    private void ApplyModeBehavior()
     {
-        var detailed = _viewModel.Config.WidgetLayoutMode == WidgetLayoutMode.Detailed;
-        MinWidth = detailed ? DetailedMinSize : 0;
-        MinHeight = detailed ? DetailedMinSize : 0;
+        if (_viewModel.Config.WidgetLayoutMode == WidgetLayoutMode.Taskbar)
+        {
+            SizeToContent = SizeToContent.Width;
+            var height = GetTaskbarHeight();
+            Height = height;
+
+            // SizeToContent="Width" still measures content's height with an effectively
+            // unconstrained pass and can silently grow the window past the explicit Height
+            // above if that content (metric columns, loading skeleton) wants more room -
+            // empirically confirmed via diagnostics, not just a documentation assumption.
+            // MaxHeight is a hard ceiling WPF's layout system does enforce, so it's what
+            // actually keeps the window pinned to the detected taskbar thickness.
+            MaxHeight = height;
+        }
+        else if (SizeToContent != SizeToContent.WidthAndHeight)
+        {
+            ClearValue(HeightProperty);
+            ClearValue(MaxHeightProperty);
+            SizeToContent = SizeToContent.WidthAndHeight;
+        }
+
+        KeepOnScreen();
+    }
+
+    /// <summary>
+    /// Detects the taskbar's thickness as MonitorBounds.Bottom - WorkArea.Bottom for the
+    /// widget's own monitor, so the docked widget matches it exactly. Only the bottom edge
+    /// is handled (the common case); a taskbar docked to the top/left/right falls back to a
+    /// fixed default rather than attempting full edge detection.
+    /// </summary>
+    private double GetTaskbarHeight()
+    {
+        var (monitor, work) = GetMonitorAndWorkBoundsForWindow();
+        var thickness = monitor.Bottom - work.Bottom;
+        return thickness > 0 ? Math.Max(24, thickness) : DefaultTaskbarHeight;
     }
 
     private void StartSelfHealTimer()
@@ -272,8 +318,10 @@ public partial class WidgetWindow : Window
 
     /// <summary>
     /// Restores the saved position if the user has moved the widget before; otherwise
-    /// falls back to the bottom-right taskbar corner. Only runs once so a later
-    /// SizeChanged (e.g. a layout toggle) never snaps the widget back to the corner.
+    /// falls back to the bottom-right taskbar corner (Compact) or horizontally centered
+    /// (Taskbar). Only runs once so a later SizeChanged (e.g. a layout toggle) never snaps
+    /// the widget back. Taskbar mode never restores a saved Top - it's always docked - so
+    /// only WidgetLeft is meaningful there (see WidgetViewModel.PersistPosition).
     /// </summary>
     private void ApplyInitialPosition()
     {
@@ -281,6 +329,15 @@ public partial class WidgetWindow : Window
         _positionApplied = true;
 
         var config = _viewModel.Config;
+
+        if (config.WidgetLayoutMode == WidgetLayoutMode.Taskbar)
+        {
+            var (_, work) = GetMonitorAndWorkBoundsForWindow();
+            this.Left = config.WidgetLeft ?? work.Left + (work.Width - this.ActualWidth) / 2;
+            KeepOnScreen();
+            return;
+        }
+
         if (config.WidgetLeft is double left && config.WidgetTop is double top)
         {
             this.Left = left;
@@ -301,20 +358,33 @@ public partial class WidgetWindow : Window
     }
 
     /// <summary>
-    /// Clamps the current top-left into the full bounds of the monitor the widget is
-    /// currently on, without re-anchoring, so the widget keeps the position the user
-    /// dragged it to even as its size changes. Clamping against the full monitor (not its
-    /// work area) deliberately lets the widget sit over the taskbar — it's a taskbar-style
-    /// meter — while still stopping at the physical screen edge. Clamping against the
-    /// window's own monitor (not just the primary) also stops a widget on a secondary
-    /// display from snapping back to the primary on every size change (layout toggle,
-    /// metric count change).
+    /// Re-anchors the widget after a size/position/mode change. In Taskbar mode this docks
+    /// flush to the physical bottom edge of the monitor - deliberately overlapping the
+    /// taskbar rather than floating just above it, matching Compact mode's existing "sits
+    /// over the taskbar" behavior. <c>Top</c> is actively re-forced back to the dock position
+    /// (not merely left alone), since <c>DragMove()</c> moves both axes and can't be
+    /// constrained mid-drag — and <c>Left</c> is clamped horizontally. In Compact mode it
+    /// clamps the current top-left into the full bounds of the widget's own monitor, without
+    /// re-anchoring, so the widget keeps the position the user dragged it to even as its size
+    /// changes. Clamping against the full monitor (not its work area) deliberately lets the
+    /// Compact widget sit over the taskbar too, while still stopping at the physical screen
+    /// edge; clamping against the window's own monitor (not just the primary) also stops a
+    /// widget on a secondary display from snapping back to the primary on every size change.
     /// </summary>
     private void KeepOnScreen()
     {
         if (!_positionApplied) return;
 
-        var bounds = GetMonitorBoundsForWindow();
+        var (monitor, _) = GetMonitorAndWorkBoundsForWindow();
+
+        if (_viewModel.Config.WidgetLayoutMode == WidgetLayoutMode.Taskbar)
+        {
+            this.Top = monitor.Bottom - this.ActualHeight;
+
+            var maxDockLeft = monitor.Left + Math.Max(0, monitor.Width - this.ActualWidth);
+            this.Left = Math.Clamp(this.Left, monitor.Left, maxDockLeft);
+            return;
+        }
 
         // Clamp against the visible border, not the window's full size: RootBorder reserves
         // a transparent Margin for the drop shadow's blur, so clamping the whole window to
@@ -326,38 +396,48 @@ public partial class WidgetWindow : Window
 
         var (visibleLeft, visibleTop) = ScreenMath.ClampToBounds(
             this.Left + margin.Left, this.Top + margin.Top, visibleWidth, visibleHeight,
-            bounds.Left, bounds.Top, bounds.Width, bounds.Height);
+            monitor.Left, monitor.Top, monitor.Width, monitor.Height);
 
         this.Left = visibleLeft - margin.Left;
         this.Top = visibleTop - margin.Top;
     }
 
     /// <summary>
-    /// Returns the full bounds (in WPF DIPs, taskbar included) of the monitor the window
-    /// currently overlaps, via Win32 MonitorFromWindow/GetMonitorInfo so we don't depend on
-    /// WinForms (which would clash with WPF's global usings). Falls back to the primary
-    /// screen bounds until the window has an HWND.
+    /// Returns both the full monitor bounds and the work-area bounds (in WPF DIPs) for the
+    /// monitor the window currently overlaps, via Win32 MonitorFromWindow/GetMonitorInfo so
+    /// we don't depend on WinForms (which would clash with WPF's global usings) or
+    /// <see cref="SystemParameters.WorkArea"/> (which is primary-monitor-only and so can't
+    /// drive Taskbar-mode docking on a secondary display). Falls back to the primary screen
+    /// bounds until the window has an HWND.
     /// </summary>
-    private System.Windows.Rect GetMonitorBoundsForWindow()
+    private (System.Windows.Rect Monitor, System.Windows.Rect Work) GetMonitorAndWorkBoundsForWindow()
     {
-        var primaryBounds = new System.Windows.Rect(
+        var primaryMonitor = new System.Windows.Rect(
             0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
+        var primaryWork = SystemParameters.WorkArea;
 
         var hwnd = new WindowInteropHelper(this).Handle;
-        if (hwnd == IntPtr.Zero) return primaryBounds;
+        if (hwnd == IntPtr.Zero) return (primaryMonitor, primaryWork);
 
         var hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-        if (hMonitor == IntPtr.Zero) return primaryBounds;
+        if (hMonitor == IntPtr.Zero) return (primaryMonitor, primaryWork);
 
         var info = new MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
-        if (!GetMonitorInfo(hMonitor, ref info)) return primaryBounds;
+        if (!GetMonitorInfo(hMonitor, ref info)) return (primaryMonitor, primaryWork);
 
         var scale = GetDpiScale();
-        return new System.Windows.Rect(
+        var monitor = new System.Windows.Rect(
             info.rcMonitor.Left / scale.x,
             info.rcMonitor.Top / scale.y,
             (info.rcMonitor.Right - info.rcMonitor.Left) / scale.x,
             (info.rcMonitor.Bottom - info.rcMonitor.Top) / scale.y);
+        var work = new System.Windows.Rect(
+            info.rcWork.Left / scale.x,
+            info.rcWork.Top / scale.y,
+            (info.rcWork.Right - info.rcWork.Left) / scale.x,
+            (info.rcWork.Bottom - info.rcWork.Top) / scale.y);
+
+        return (monitor, work);
     }
 
     private (double x, double y) GetDpiScale()
@@ -391,8 +471,12 @@ public partial class WidgetWindow : Window
     {
         if (e.ChangedButton == MouseButton.Left)
         {
+            // DragMove() moves both axes and can't be constrained mid-drag, so in Taskbar
+            // mode the vertical component it applied is undone here: KeepOnScreen() actively
+            // re-forces Top back to the dock position (not merely skipping it) and clamps
+            // Left horizontally. In Compact mode it just clamps both axes as before.
             DragMove();
-            KeepOnScreen(); // drag can leave the widget partially off-screen; clamp before persisting.
+            KeepOnScreen();
             _viewModel.PersistPosition(this.Left, this.Top);
         }
     }
@@ -409,6 +493,20 @@ public partial class WidgetWindow : Window
         ApplyOpacity();
     }
 
+    /// <summary>
+    /// Empty-state click routes to Settings instead of starting a window drag. Must handle
+    /// the event (not just execute the command) because the window-level
+    /// Window_MouseLeftButtonDown handler above would otherwise also fire on the same click
+    /// and start a DragMove - a click on this surface is a click, not a drag.
+    /// </summary>
+    private void EmptyState_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+
+        _viewModel.OpenSettingsCommand.Execute(null);
+        e.Handled = true;
+    }
+
     private void Config_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(AppConfig.WidgetOpacity)
@@ -419,9 +517,9 @@ public partial class WidgetWindow : Window
         }
         else if (e.PropertyName == nameof(AppConfig.WidgetLayoutMode))
         {
-            // Switching to Compact drops the Detailed floor so the window can shrink to the
-            // slim strip; switching back restores it. SizeChanged then re-clamps the position.
-            ApplyMinSizeForLayout();
+            // Swaps SizeToContent/fixed-Height and re-anchors (docks in Taskbar, clamps in
+            // Compact) for the newly selected mode.
+            ApplyModeBehavior();
         }
     }
 

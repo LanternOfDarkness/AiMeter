@@ -68,10 +68,10 @@
 
                             <TextBlock Text="Widget Format" Foreground="White" Margin="0,0,0,6" />
                             <StackPanel Orientation="Horizontal">
-                                <RadioButton Content="Detailed (rings)"
-                                             IsChecked="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Detailed}}" />
-                                <RadioButton Content="Compact (bars)"
+                                <RadioButton Content="Compact (bars)" Margin="0,0,14,0"
                                              IsChecked="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Compact}}" />
+                                <RadioButton Content="Taskbar (docked)"
+                                             IsChecked="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Taskbar}}" />
                             </StackPanel>
                         </StackPanel>
                     </Border>

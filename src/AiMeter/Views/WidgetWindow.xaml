@@ -3,7 +3,6 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:controls="clr-namespace:AiMeter.Controls"
         xmlns:converters="clr-namespace:AiMeter.Converters"
         xmlns:viewModels="clr-namespace:AiMeter.ViewModels"
         xmlns:models="clr-namespace:AiMeter.Models"
@@ -27,6 +26,7 @@
             <converters:DoubleToThicknessConverter x:Key="DoubleToThicknessConverter" />
             <converters:OpacityToBackgroundBrushConverter x:Key="OpacityToBackgroundBrushConverter" />
             <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
         <Style x:Key="WidgetIconButton" TargetType="Button">
             <Setter Property="Width" Value="20" />
@@ -38,16 +38,48 @@
             <Setter Property="Foreground" Value="#AAAAAA" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FontSize" Value="12" />
+            <Style.Triggers>
+                <!-- Taskbar mode's fixed, short window height leaves little room for the
+                     hover pill - shrink the icons so the pill fits without growing the
+                     window past the detected taskbar thickness. -->
+                <DataTrigger Binding="{Binding Config.WidgetLayoutMode}" Value="Taskbar">
+                    <Setter Property="Width" Value="16" />
+                    <Setter Property="Height" Value="16" />
+                    <Setter Property="FontSize" Value="9" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="RootBorderStyle" TargetType="Border">
+            <Setter Property="Margin" Value="6" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="{Binding Config.WidgetPadding, Converter={StaticResource DoubleToThicknessConverter}}" />
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.5" />
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <!-- Taskbar mode's height budget is tight (~40px minus the taskbar margin);
+                     the shadow's blur margin and the user's configurable padding both eat
+                     into it and, worse, leave a transparent inset below the content even
+                     though the window itself is flush against the taskbar - reading as a
+                     gap. All three shrink to near nothing here, and only the top corners
+                     stay rounded so the bottom reads as flush-docked. -->
+                <DataTrigger Binding="{Binding Config.WidgetLayoutMode}" Value="Taskbar">
+                    <Setter Property="Margin" Value="0,1,0,0" />
+                    <Setter Property="CornerRadius" Value="6,6,0,0" />
+                    <Setter Property="Padding" Value="3,0,3,0" />
+                    <Setter Property="Effect" Value="{x:Null}" />
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
         </ResourceDictionary>
     </Window.Resources>
 
-    <Border x:Name="RootBorder" Background="{Binding Config.BackgroundOpacity, Converter={StaticResource OpacityToBackgroundBrushConverter}}" CornerRadius="10" Margin="6"
-            Padding="{Binding Config.WidgetPadding, Converter={StaticResource DoubleToThicknessConverter}}"
+    <Border x:Name="RootBorder" Style="{StaticResource RootBorderStyle}"
+            Background="{Binding Config.BackgroundOpacity, Converter={StaticResource OpacityToBackgroundBrushConverter}}"
             MouseEnter="RootBorder_MouseEnter" MouseLeave="RootBorder_MouseLeave">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="6" ShadowDepth="1" Opacity="0.5" />
-        </Border.Effect>
 
         <Border.ContextMenu>
             <ContextMenu>
@@ -66,75 +98,123 @@
 
         <Grid>
         <DockPanel x:Name="ContentHost">
-            <!-- Skeleton placeholder shown before the first poll completes (Detailed mode only),
-                 sized like one real tile so the window opens at a sensible fixed size. -->
-            <StackPanel DockPanel.Dock="Top" Margin="14,0,14,0"
-                        Visibility="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Detailed}}">
-                <StackPanel Visibility="{Binding HasFetchedOnce, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Opacity="0.45">
-                    <Ellipse Width="68" Height="68" Stroke="#444" StrokeThickness="5" Fill="Transparent" />
-                    <TextBlock Text="loading…" Foreground="#888888" HorizontalAlignment="Center" Margin="0,9,0,0" FontSize="12" />
+
+            <!-- Compact mode: a slim vertical strip of thin bars. -->
+            <Grid DockPanel.Dock="Top"
+                  Visibility="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Compact}}">
+
+                <!-- Loading skeleton: shown until the first poll completes. -->
+                <StackPanel Margin="14,4,14,4" Opacity="0.45"
+                            Visibility="{Binding HasFetchedOnce, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                    <Border Height="6" Width="180" CornerRadius="3" Background="#444444" />
                 </StackPanel>
-            </StackPanel>
 
-            <!-- Detailed format: circular rings -->
-<ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Metrics}"
-                          ItemTemplate="{StaticResource DetailedMetricTile}"
-                          Visibility="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Detailed}}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-            </ItemsControl>
+                <StackPanel Visibility="{Binding HasFetchedOnce, Converter={StaticResource BooleanToVisibilityConverter}}">
 
-            <!-- Compact format: thin bars -->
-            <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Metrics}"
-                          Visibility="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Compact}}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Vertical" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Grid Margin="0,1,0,1" ToolTip="{Binding Name}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="76" />
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="40" />
-                                <ColumnDefinition Width="52" />
-                            </Grid.ColumnDefinitions>
+                    <!-- Empty state: no provider logged in at all. Doubles as a call-to-action;
+                         click routes to Settings instead of starting a window drag. -->
+                    <Border Padding="14,6" Background="Transparent" Cursor="Hand"
+                            Visibility="{Binding IsEmptyState, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            MouseLeftButtonDown="EmptyState_MouseLeftButtonDown">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <TextBlock Text="&#128274;" FontSize="12" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Text="Log in required" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
 
-                            <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="White" FontSize="11"
-                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    <ItemsControl ItemsSource="{Binding Metrics}"
+                                  Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Vertical" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,1,0,1" ToolTip="{Binding Name}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="120" />
+                                        <ColumnDefinition Width="40" />
+                                        <ColumnDefinition Width="52" />
+                                    </Grid.ColumnDefinitions>
 
-                            <Border Grid.Column="1" Height="6" CornerRadius="3" Background="#33FFFFFF" VerticalAlignment="Center">
-                                <Border HorizontalAlignment="Left" CornerRadius="3"
-                                        Width="{Binding RemainingPercentage, Converter={StaticResource PercentageToWidthConverter}, ConverterParameter=120}"
-                                        Background="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}" />
-                            </Border>
+                                    <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="White" FontSize="11"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
 
-                            <TextBlock Grid.Column="2" Text="{Binding RemainingPercentage, StringFormat={}{0:0}%}"
-                                       Foreground="#CCCCCC" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                    <Border Grid.Column="1" Height="6" CornerRadius="3" Background="#33FFFFFF" VerticalAlignment="Center">
+                                        <Border HorizontalAlignment="Left" CornerRadius="3"
+                                                Width="{Binding RemainingPercentage, Converter={StaticResource PercentageToWidthConverter}, ConverterParameter=120}"
+                                                Background="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}" />
+                                    </Border>
 
-                            <TextBlock Grid.Column="3" Foreground="#888888" FontSize="10"
-                                       HorizontalAlignment="Right" VerticalAlignment="Center">
-                                <TextBlock.Text>
-                                    <MultiBinding Converter="{StaticResource ResetTimeConverter}" ConverterParameter="short">
-                                        <Binding Path="ResetTime" />
-                                        <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
-                                    </MultiBinding>
-                                </TextBlock.Text>
-                            </TextBlock>
-                        </Grid>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                                    <TextBlock Grid.Column="2" Text="{Binding RemainingPercentage, StringFormat={}{0:0}%}"
+                                               Foreground="#CCCCCC" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center" />
+
+                                    <TextBlock Grid.Column="3" Foreground="#888888" FontSize="10"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center">
+                                        <TextBlock.Text>
+                                            <MultiBinding Converter="{StaticResource ResetTimeConverter}" ConverterParameter="short">
+                                                <Binding Path="ResetTime" />
+                                                <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                            </MultiBinding>
+                                        </TextBlock.Text>
+                                    </TextBlock>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Grid>
+
+            <!-- Taskbar mode: one narrow vertical-fill column per metric, docked to the
+                 bottom of the work area at taskbar height (see WidgetWindow.xaml.cs). -->
+            <Grid DockPanel.Dock="Top"
+                  Visibility="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Taskbar}}">
+
+                <!-- Loading skeleton: placeholder columns sized like real metric columns
+                     (28px, see TaskbarMetricColumn) - not a single sliver, which would let
+                     SizeToContent="Width" collapse the window to almost nothing while
+                     waiting for the first poll. -->
+                <StackPanel Orientation="Horizontal" Opacity="0.45"
+                            Visibility="{Binding HasFetchedOnce, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                    <Border Width="28" Margin="2,6,2,6" CornerRadius="2" Background="#444444" />
+                    <Border Width="28" Margin="2,6,2,6" CornerRadius="2" Background="#444444" />
+                    <Border Width="28" Margin="2,6,2,6" CornerRadius="2" Background="#444444" />
+                </StackPanel>
+
+                <!-- A Grid (not StackPanel) here deliberately: the fixed-height Taskbar window
+                     needs this stretched to its full ActualHeight so the metric columns'
+                     bottom-anchored ScaleTransform fills have real pixels to scale within -
+                     a vertical StackPanel would size each child to its own natural (near-zero)
+                     content height instead of the available space. -->
+                <Grid Visibility="{Binding HasFetchedOnce, Converter={StaticResource BooleanToVisibilityConverter}}">
+
+                    <!-- Empty state: just the lock glyph, centered - no room for text at
+                         taskbar height. Click routes to Settings. -->
+                    <Border Padding="10,0" Background="Transparent" Cursor="Hand"
+                            Visibility="{Binding IsEmptyState, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            MouseLeftButtonDown="EmptyState_MouseLeftButtonDown">
+                        <TextBlock Text="&#128274;" FontSize="14" Foreground="#AAAAAA"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+
+                    <ItemsControl ItemsSource="{Binding Metrics}"
+                                  ItemTemplate="{StaticResource TaskbarMetricColumn}"
+                                  Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </Grid>
+            </Grid>
         </DockPanel>
 
             <!-- Controls overlay: revealed on hover in the top-right corner, so it never eats a
-                 layout row or crowds the tiles at rest. Works in both Detailed and Compact modes.
-                 A translucent pill keeps the glyphs legible over whatever sits behind them. -->
+                 layout row or crowds the tiles at rest. A translucent pill keeps the glyphs
+                 legible over whatever sits behind them. -->
             <Border HorizontalAlignment="Right" VerticalAlignment="Top" Panel.ZIndex="10"
                     Background="#E6303034" CornerRadius="7" Padding="3,2">
                 <Border.Style>
@@ -152,7 +232,7 @@
                             Style="{StaticResource WidgetIconButton}" />
                     <Button Content="&#9881;" ToolTip="Settings" Command="{Binding OpenSettingsCommand}"
                             Style="{StaticResource WidgetIconButton}" />
-                    <Button Content="&#8645;" ToolTip="Switch widget layout" Command="{Binding ToggleLayoutCommand}"
+                    <Button Content="&#8645;" ToolTip="Switch widget layout (Compact / Taskbar)" Command="{Binding ToggleLayoutCommand}"
                             Style="{StaticResource WidgetIconButton}" />
                     <Button Content="&#10005;" ToolTip="Hide widget" Command="{Binding HideCommand}"
                             CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"

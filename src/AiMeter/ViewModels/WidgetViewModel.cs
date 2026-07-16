@@ -22,6 +22,13 @@ public partial class WidgetViewModel : ObservableObject
     public AppConfig Config => _settingsManager.Current;
     public bool HasFetchedOnce => _providerManager.HasFetchedOnce;
 
+    /// <summary>
+    /// True once the first poll has completed and no provider has an active session at all.
+    /// Distinct from a fetch error on a logged-in provider (that keeps showing its
+    /// "Error Fetching" tile) - this is specifically "nothing to show, go log in".
+    /// </summary>
+    public bool IsEmptyState => HasFetchedOnce && !Config.HasClaudeSession && !Config.HasOpenCodeSession;
+
     [ObservableProperty]
     private DateTime _now = DateTime.Now;
 
@@ -38,6 +45,17 @@ public partial class WidgetViewModel : ObservableObject
             if (e.PropertyName == nameof(HasFetchedOnce))
             {
                 OnPropertyChanged(nameof(HasFetchedOnce));
+                OnPropertyChanged(nameof(IsEmptyState));
+            }
+        };
+
+        // IsEmptyState also depends on the session flags, which live on Config (not this VM),
+        // so neither is an automatic [ObservableProperty] dependency - relay explicitly.
+        Config.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName is nameof(AppConfig.HasClaudeSession) or nameof(AppConfig.HasOpenCodeSession))
+            {
+                OnPropertyChanged(nameof(IsEmptyState));
             }
         };
 
@@ -70,16 +88,23 @@ public partial class WidgetViewModel : ObservableObject
     [RelayCommand]
     private void ToggleLayout()
     {
-        Config.WidgetLayoutMode = Config.WidgetLayoutMode == WidgetLayoutMode.Detailed
-            ? WidgetLayoutMode.Compact
-            : WidgetLayoutMode.Detailed;
+        Config.WidgetLayoutMode = Config.WidgetLayoutMode == WidgetLayoutMode.Compact
+            ? WidgetLayoutMode.Taskbar
+            : WidgetLayoutMode.Compact;
         _settingsManager.Save();
     }
 
     public void PersistPosition(double left, double top)
     {
         Config.WidgetLeft = left;
-        Config.WidgetTop = top;
+
+        // Taskbar mode is a dock, not a free-floating window - Top is always recomputed from
+        // the work area (see WidgetWindow.KeepOnScreen), never restored from a saved value.
+        if (Config.WidgetLayoutMode != WidgetLayoutMode.Taskbar)
+        {
+            Config.WidgetTop = top;
+        }
+
         _settingsManager.Save();
     }
 

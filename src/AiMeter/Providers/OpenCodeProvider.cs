@@ -28,11 +28,11 @@ public class OpenCodeProvider : IProvider
 
     // The three Go usage windows, in the order they appear on the dashboard. Keys are the
     // stable field names in opencode.ai's hydration payload; names are what the widget shows.
-    private static readonly (string Key, string Name)[] UsageKinds =
+    private static readonly (string Key, string Name, TimeSpan Duration)[] UsageKinds =
     {
-        ("rollingUsage", "OpenCode Rolling"),
-        ("weeklyUsage",  "OpenCode Weekly"),
-        ("monthlyUsage", "OpenCode Monthly"),
+        ("rollingUsage", "OpenCode Rolling", TimeSpan.FromHours(5)),
+        ("weeklyUsage",  "OpenCode Weekly",  TimeSpan.FromDays(7)),
+        ("monthlyUsage", "OpenCode Monthly", TimeSpan.FromDays(30)),
     };
 
     private readonly IOpenCodeSession _session;
@@ -134,7 +134,7 @@ public class OpenCodeProvider : IProvider
     /// </summary>
     private static IEnumerable<UsageMetric> ParseUsage(string html)
     {
-        foreach (var (key, name) in UsageKinds)
+        foreach (var (key, name, duration) in UsageKinds)
         {
             // Match "<key>:[$R[n]=]{ ... }" — object body has no nested braces, so [^{}]* is
             // safe. Requiring the "{" skips the unrelated "<key>:null" in other payload objects.
@@ -159,6 +159,7 @@ public class OpenCodeProvider : IProvider
                 TotalQuota = 100,
                 RemainingQuota = Math.Max(0, 100 - percentUsed),
                 ResetTime = resetTime,
+                WindowDuration = duration,
             };
         }
     }

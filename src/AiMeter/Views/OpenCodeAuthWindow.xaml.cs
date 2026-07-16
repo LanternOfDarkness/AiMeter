@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Windows;
+using System.Windows.Interop;
 using AiMeter.Interop;
 using AiMeter.Services;
 using Microsoft.Web.WebView2.Core;
@@ -21,7 +22,7 @@ public partial class OpenCodeAuthWindow : Window
     public OpenCodeAuthWindow(IOpenCodeSession session)
     {
         InitializeComponent();
-        DarkTitleBar.Apply(this);
+        SourceInitialized += (s, e) => DarkTitleBar.ApplyToHwnd(new WindowInteropHelper(this).Handle);
         _session = session;
         InitializeAsync();
     }

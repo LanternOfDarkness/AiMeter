@@ -2,6 +2,6 @@ namespace AiMeter.Models;
 
 public enum WidgetLayoutMode
 {
-    Detailed,
-    Compact
+    Compact,
+    Taskbar
 }

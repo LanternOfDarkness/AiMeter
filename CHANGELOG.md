@@ -2,6 +2,37 @@
 
 All notable changes to AiMeter are documented in this file.
 
+## [1.1.0] - 2026-07-16
+
+### Added
+- **Taskbar mode**: a new layout that docks the widget flush against the physical bottom of
+  the screen — overlapping the taskbar the same way Compact mode already could, rather than
+  floating just above it — sized to match its detected thickness. One narrow vertical-fill
+  column per metric shows a 3-letter code, the quota fill, the remaining percentage, a
+  time-until-reset sliver, and a compact reset countdown (`3.3h`, `5.2d`) all at rest; the
+  full metric name and verbose reset time are one hover away via a dark-themed tooltip.
+  Horizontal dragging repositions it; switching back to Compact restores free-floating
+  behavior.
+- **"Log in required" empty state**: once the first poll completes, if no provider is logged
+  in at all, the widget shows a single call-to-action instead of per-provider error tiles;
+  click it to open Settings.
+- Inno Setup installer (`installer/aimeter.iss`) — per-user, no admin/UAC, installs to
+  `%LocalAppData%\Programs\AiMeter`, with optional launch-at-startup/desktop-shortcut tasks
+  and automatic .NET 9 Desktop Runtime / WebView2 Runtime prerequisite checks.
+
+### Removed
+- The Detailed (circular ring) layout is gone — Compact already showed the same information
+  more space-efficiently. `WidgetLayoutMode` now has two values, `Compact` and `Taskbar`;
+  the setting is stored under a new JSON key (`LayoutMode`) so upgrading users land on
+  `Compact` instead of the old numeric value being reinterpreted as `Taskbar`.
+
+### Fixed
+- Alt+Tab no longer shows ghost entries for the Settings/Auth windows: dark-title-bar setup
+  now runs on `SourceInitialized` (after `Show()` naturally creates the HWND) instead of
+  forcing HWND creation from the constructor.
+- Tooltips throughout the widget now use a dark theme matching the rest of the UI instead of
+  WPF's default light chrome.
+
 ## [1.0.1] - 2026-07-11
 
 ### Fixed

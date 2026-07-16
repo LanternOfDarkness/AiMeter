@@ -15,7 +15,7 @@ system tray application that continuously monitors usage limits across
 multiple AI providers.
 
 The initial release focuses on Claude, but the architecture is designed
-to support additional providers such as OpenAI, Gemini, Grok,
+to support additional providers such as ChatGPT, OpenAI (API), Gemini, Grok,
 OpenRouter, DeepSeek, Kimi, Cursor, GitHub Copilot, ZenMux, NeuralWatt,
 and others.
 
@@ -103,38 +103,39 @@ Properties:
 
 ## Widget Layout
 
-Each metric is displayed as an independent circular indicator.
+Two layout modes, selected in Settings (or via the widget's own toggle button/context menu):
+
+**Compact** — a free-floating, draggable strip of thin bars, one row per metric:
 
 ``` text
-┌───────────────────────────────┐
-
-      ○          ○          ○
-     74%        100%       42%
-
-      5h         Week       2d
-
- Claude Msg   Claude Max   Claude Fable
-
-───────────────────────────────
-
-      ○          ○
-
-     63%        91%
-
-      4h         1d
-
- GPT-5       Gemini
-
-└───────────────────────────────┘
+┌───────────────────────────────────┐
+│ Claude Session   ████████░░  74%  5h  │
+│ Claude Weekly    ██████████  100% Week│
+│ OpenCode Rolling ████░░░░░░  42%  2d  │
+└───────────────────────────────────┘
 ```
 
-Each indicator contains:
+Each row shows the metric name, a quota-fill bar (colored by remaining %), the remaining
+percentage, and a short reset countdown (`5h`, `2d 3h`).
 
--   Circular progress ring showing **remaining quota**
--   Remaining percentage
--   Reset timer
--   Metric name
--   Optional provider icon
+**Taskbar** — docks to the bottom of the work area at taskbar height, one narrow
+vertical-fill column per metric, growing horizontally as metrics are added:
+
+``` text
+┌────┬────┬────┬────┐
+│CSE │CWK │OCR │OCW │
+│▓▓▓▓│▓▓▓▓│░░▓▓│▓▓▓▓│
+│   ▏│   ▏│   ▏│   ▏│
+└────┴────┴────┴────┘
+```
+
+Each column shows a 3-letter metric code, a bottom-up quota-fill bar, and a thin
+time-until-reset sliver hugging its right edge; percentage and reset time appear on hover via
+tooltip. `Left` is user-draggable horizontally; the dock's `Top` and height are recomputed
+from the taskbar's detected thickness.
+
+When no provider is logged in at all, both modes replace the metrics with a single
+"Log in required" surface (a lock glyph, plus text in Compact) that opens Settings on click.
 
 ### Color States
 
@@ -159,7 +160,7 @@ Users can:
 
 -   Select which metrics are visible
 -   Reorder metrics
--   Choose grid, row, or column layout
+-   Choose Compact or Taskbar layout
 -   Resize widget
 -   Adjust opacity
 -   Toggle labels, timers, icons, and percentages
@@ -220,6 +221,16 @@ Configurable notifications for:
 -   Cloud sync
 -   Plugin marketplace
 -   Compact tray popup
+-   **ChatGPT provider** — track ChatGPT Plus/Pro usage limits alongside Claude and OpenCode.
+-   **Font size setting** — customizable widget text size (Compact rows, Taskbar column
+    labels/numbers).
+-   **Hide numeric values toggle** — an option to drop the always-visible percentage/reset
+    text (Taskbar column overlay, Compact's % and reset columns), leaving just the name/code
+    and the quota-colored bar; full numbers would remain available on hover via the tooltip.
+-   **Per-metric color customization** — user-chosen colors instead of (or layered on top of)
+    the fixed quota-threshold palette.
+-   **Self-contained installer** — see `docs/plans/2026-07-15-taskbar-mode-docking-installer-design.md`
+    for details (bundles the .NET runtime so no network access is needed at install time).
 
 ## Design Principles
 
