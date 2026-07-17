@@ -18,6 +18,13 @@ public partial class WidgetWindow : Window
     private bool _positionApplied;
     private HwndSource? _hwndSource;
 
+    // "Game mode": true while the widget is click-through (WS_EX_TRANSPARENT). Applied
+    // automatically whenever a borderless-fullscreen app (a game) is foreground on the
+    // widget's own monitor, so the mouse passes straight through to the game instead of
+    // being captured by the topmost widget - and cleared again the moment a normal window
+    // returns. Tracked so we only call SetWindowLong on an actual transition.
+    private bool _clickThrough;
+
     /// <summary>
     /// True when the user deliberately hid the widget (via the Hide command). Lets the
     /// self-heal timer distinguish "user wants it gone" from "something external made it
@@ -69,6 +76,14 @@ public partial class WidgetWindow : Window
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_NOACTIVATE = 0x08000000;
+
+    // Click-through: the OS hit-tests mouse messages *through* a WS_EX_TRANSPARENT window to
+    // whatever is beneath it, so the widget stays visible/topmost but never captures the
+    // mouse. WS_EX_TRANSPARENT only passes the mouse through reliably on a layered window;
+    // AllowsTransparency="True" already makes this one layered, but we set WS_EX_LAYERED
+    // explicitly alongside it to avoid depending on that implicitly.
+    private const int WS_EX_TRANSPARENT = 0x00000020;
+    private const int WS_EX_LAYERED = 0x00080000;
 
     private const int WM_WINDOWPOSCHANGING = 0x0046;
 
@@ -214,7 +229,13 @@ public partial class WidgetWindow : Window
 
     private void OnForegroundChanged(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
-        => ReassertTopmost();
+    {
+        ReassertTopmost();
+
+        // A foreground change is exactly the transition into or out of a fullscreen game, so
+        // re-evaluate click-through here (the same event that drives topmost re-assertion).
+        ApplyClickThrough();
+    }
 
     private void ReassertTopmost()
     {
@@ -232,12 +253,75 @@ public partial class WidgetWindow : Window
         SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 
+    /// <summary>
+    /// Turns click-through on while a borderless-fullscreen game is foreground on the widget's
+    /// own monitor, and off otherwise. This is the "Game mode" behavior: the widget stays a
+    /// pure visual overlay over the game (topmost, visible) but the mouse passes straight
+    /// through it, so hovering the widget no longer pulls the cursor/focus away from the game.
+    /// </summary>
+    private void ApplyClickThrough() => SetClickThrough(ShouldBeClickThrough());
+
+    /// <summary>
+    /// True when the foreground window is fullscreen (covers its whole monitor - a game, not a
+    /// merely maximized window that stops at the work area) *and* that monitor is the same one
+    /// the widget sits on. The same-monitor guard keeps a widget on a second display fully
+    /// interactive while a game is fullscreen on the primary - it isn't over the game there,
+    /// so there's no reason to make it non-interactive.
+    /// </summary>
+    private bool ShouldBeClickThrough()
+    {
+        var selfHwnd = new WindowInteropHelper(this).Handle;
+        if (selfHwnd == IntPtr.Zero) return false;
+
+        var fg = GetForegroundWindow();
+        if (fg == IntPtr.Zero || fg == selfHwnd) return false;
+        if (!GetWindowRect(fg, out var wr)) return false;
+
+        var fgMonitor = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST);
+        if (fgMonitor == IntPtr.Zero) return false;
+
+        var info = new MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(fgMonitor, ref info)) return false;
+
+        var m = info.rcMonitor;
+        var fullscreen = wr.Left <= m.Left && wr.Top <= m.Top && wr.Right >= m.Right && wr.Bottom >= m.Bottom;
+        if (!fullscreen) return false;
+
+        return MonitorFromWindow(selfHwnd, MONITOR_DEFAULTTONEAREST) == fgMonitor;
+    }
+
+    private void SetClickThrough(bool on)
+    {
+        if (on == _clickThrough) return;
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+
+        var exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+        // Only WS_EX_TRANSPARENT is toggled - WS_EX_LAYERED is left set (WPF's transparency
+        // relies on it, so clearing it would break the window's own compositing).
+        exStyle = on
+            ? exStyle | WS_EX_TRANSPARENT | WS_EX_LAYERED
+            : exStyle & ~WS_EX_TRANSPARENT;
+        SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
+        _clickThrough = on;
+
+        // Once click-through is on, no more MouseEnter/Leave arrive, so a hover that was in
+        // progress would otherwise stay stuck at HoverOpacity. Reset to the resting look.
+        if (on && _isHovered)
+        {
+            _isHovered = false;
+            ApplyOpacity();
+        }
+    }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         ApplyModeBehavior();
         ApplyInitialPosition();
         ApplyOpacity();
         StartSelfHealTimer();
+        ApplyClickThrough();
 
         // Covers resolution/DPI/taskbar-thickness changes on the current monitor - Taskbar
         // mode's docked height and position both depend on the work area.
@@ -314,6 +398,10 @@ public partial class WidgetWindow : Window
         }
 
         ReassertTopmost();
+
+        // Belt-and-suspenders: recover the correct click-through state if a foreground change
+        // was ever missed (e.g. a game that goes fullscreen without a foreground event).
+        ApplyClickThrough();
     }
 
     /// <summary>

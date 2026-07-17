@@ -2,6 +2,15 @@
 
 All notable changes to AiMeter are documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Game mode**: while a borderless-fullscreen app (a game) is in the foreground on the
+  widget's own monitor, the widget automatically becomes click-through — it stays visible
+  and on top, but the mouse passes straight through it to the game underneath instead of
+  being captured by the widget. Reverts the instant a normal window regains focus, driven by
+  the same foreground-change hook that already re-asserts topmost.
+
 ## [1.1.0] - 2026-07-16
 
 ### Added
