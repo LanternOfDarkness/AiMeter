@@ -5,11 +5,29 @@ All notable changes to AiMeter are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Compact-mode customization**: the bars layout is now configurable in Settings ▸ Appearance.
+  - **Multi-column bars** — set how many bars stack in one column; once a column is full the
+    remaining metrics wrap into a second column, then a third, and the widget grows sideways.
+  - **Bar width** and **cell gap** sliders to make each row wider/narrower and looser/tighter.
+  - **Column gap** slider controlling the spacing between wrapped bar columns.
+- **Font size** setting — scales the widget text (Compact rows, and Taskbar column
+  labels/numbers within a clamp so the docked column can't overflow).
+- **Hide numeric values** toggle — drops the always-visible % and reset text in both layouts,
+  leaving just the label/code and the colored bar; the full numbers stay available on hover.
+- **Per-metric custom label** — override a metric's displayed name in Compact mode from
+  Settings ▸ Metrics Shown (Taskbar keeps its auto 3-letter code).
+- **Per-metric color** — pick a bar color per metric (or "Auto" to keep the quota-threshold
+  palette) from Settings ▸ Metrics Shown; applies in both layouts.
 - **Game mode**: while a borderless-fullscreen app (a game) is in the foreground on the
   widget's own monitor, the widget automatically becomes click-through — it stays visible
   and on top, but the mouse passes straight through it to the game underneath instead of
   being captured by the widget. Reverts the instant a normal window regains focus, driven by
   the same foreground-change hook that already re-asserts topmost.
+
+### Changed
+- **Settings window reorganized into tabs** (Widget · Compact · Metrics · General) so the
+  growing list of options no longer stacks into one long scroll; the window is now a more
+  focused size with dark-themed tabbed navigation.
 
 ## [1.1.0] - 2026-07-16
 

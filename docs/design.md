@@ -222,15 +222,21 @@ Configurable notifications for:
 -   Plugin marketplace
 -   Compact tray popup
 -   **ChatGPT provider** — track ChatGPT Plus/Pro usage limits alongside Claude and OpenCode.
--   **Font size setting** — customizable widget text size (Compact rows, Taskbar column
-    labels/numbers).
--   **Hide numeric values toggle** — an option to drop the always-visible percentage/reset
-    text (Taskbar column overlay, Compact's % and reset columns), leaving just the name/code
-    and the quota-colored bar; full numbers would remain available on hover via the tooltip.
--   **Per-metric color customization** — user-chosen colors instead of (or layered on top of)
-    the fixed quota-threshold palette.
+-   **Reorder metrics** — user-set ordering of metrics in the widget (up/down or drag).
 -   **Self-contained installer** — see `docs/plans/2026-07-15-taskbar-mode-docking-installer-design.md`
     for details (bundles the .NET runtime so no network access is needed at install time).
+
+### Delivered
+
+-   **Compact multi-column bars** — configurable bars-per-column that wraps overflow into
+    additional columns; plus per-widget bar-width and cell-gap sliders.
+-   **Font size setting** — customizable widget text size (Compact rows, Taskbar column
+    labels/numbers, the latter clamped to the docked column height).
+-   **Hide numeric values toggle** — drops the always-visible percentage/reset text in both
+    layouts, leaving just the name/code and the quota-colored bar; full numbers remain on hover.
+-   **Per-metric custom label** — override a metric's displayed name (Compact mode).
+-   **Per-metric color customization** — user-chosen bar colors, falling back to the
+    quota-threshold palette when set to "Auto".
 
 ## Design Principles
 
