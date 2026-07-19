@@ -7,6 +7,9 @@
     <converters:PercentageToWidthConverter x:Key="PercentageToWidthConverter" />
     <converters:MetricLabelConverter x:Key="MetricLabelConverter" />
     <converters:TimeBarFractionConverter x:Key="TimeBarFractionConverter" />
+    <converters:MetricColorConverter x:Key="MetricColorConverter" />
+    <converters:FontScaleConverter x:Key="FontScaleConverter" />
+    <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
     <!-- Dark-themed to match the widget - WPF's default ToolTip chrome is a light box with
          black text, which reads as a jarring mismatch popping up over an otherwise all-dark
@@ -58,15 +61,22 @@
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Text="{Binding Name, Converter={StaticResource MetricLabelConverter}}"
-                       Foreground="#CCCCCC" FontSize="8" HorizontalAlignment="Center" Margin="0,0,0,1" />
+                       Foreground="#CCCCCC" HorizontalAlignment="Center" Margin="0,0,0,1"
+                       FontSize="{Binding DataContext.Config.WidgetFontSize, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource FontScaleConverter}, ConverterParameter=0.72;7;10}" />
 
             <Grid Grid.Row="1" ClipToBounds="True">
                 <!-- Track -->
                 <Border CornerRadius="2" Background="#33FFFFFF" />
 
-                <!-- Quota fill: bottom-anchored scale, colored by remaining quota. -->
-                <Border CornerRadius="2" Background="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}"
-                        RenderTransformOrigin="0.5,1">
+                <!-- Quota fill: bottom-anchored scale, colored by the per-metric override or,
+                     failing that, the quota-threshold palette. -->
+                <Border CornerRadius="2" RenderTransformOrigin="0.5,1">
+                    <Border.Background>
+                        <MultiBinding Converter="{StaticResource MetricColorConverter}">
+                            <Binding Path="RemainingPercentage" />
+                            <Binding Path="CustomColor" />
+                        </MultiBinding>
+                    </Border.Background>
                     <Border.RenderTransform>
                         <ScaleTransform ScaleY="{Binding RemainingPercentage, Converter={StaticResource PercentageToWidthConverter}, ConverterParameter=1}" />
                     </Border.RenderTransform>
@@ -91,8 +101,10 @@
                 <!-- Remaining percentage, always visible - sits just under the code label, on
                      top of the fill/track regardless of how full the bar is. -->
                 <TextBlock Text="{Binding RemainingPercentage, StringFormat={}{0:0}}"
-                           FontSize="9" FontWeight="SemiBold" Foreground="White"
-                           HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0">
+                           FontWeight="SemiBold" Foreground="White"
+                           HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0"
+                           FontSize="{Binding DataContext.Config.WidgetFontSize, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource FontScaleConverter}, ConverterParameter=0.82;8;11}"
+                           Visibility="{Binding DataContext.Config.ShowNumericValues, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <TextBlock.Effect>
                         <DropShadowEffect BlurRadius="2" ShadowDepth="0" Opacity="0.9" Color="Black" />
                     </TextBlock.Effect>
@@ -101,8 +113,10 @@
 
             <!-- Reset countdown, always visible - "3.3h"/"5.2d" style keeps it a consistent,
                  narrow width instead of a multi-unit compound like "3h20m". -->
-            <TextBlock Grid.Row="2" Foreground="#999999" FontSize="7"
-                       HorizontalAlignment="Center" Margin="0,1,0,0">
+            <TextBlock Grid.Row="2" Foreground="#999999"
+                       HorizontalAlignment="Center" Margin="0,1,0,0"
+                       FontSize="{Binding DataContext.Config.WidgetFontSize, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource FontScaleConverter}, ConverterParameter=0.64;6;9}"
+                       Visibility="{Binding DataContext.Config.ShowNumericValues, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <TextBlock.Text>
                     <MultiBinding Converter="{StaticResource ResetTimeConverter}" ConverterParameter="decimal">
                         <Binding Path="ResetTime" />

@@ -26,6 +26,10 @@
             <converters:DoubleToThicknessConverter x:Key="DoubleToThicknessConverter" />
             <converters:OpacityToBackgroundBrushConverter x:Key="OpacityToBackgroundBrushConverter" />
             <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+            <converters:PercentageWidthMultiConverter x:Key="PercentageWidthMultiConverter" />
+            <converters:MetricColorConverter x:Key="MetricColorConverter" />
+            <converters:GapToMarginConverter x:Key="GapToMarginConverter" />
+            <converters:FontScaleConverter x:Key="FontScaleConverter" />
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
         <Style x:Key="WidgetIconButton" TargetType="Button">
@@ -122,37 +126,90 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- A vertical WrapPanel gives column-first fill: bars stack down a column
+                         until CompactColumnMaxHeight (BarsPerColumn × row height) is reached, then
+                         wrap into the next column. Binds the same Metrics collection so
+                         ProviderManager's in-place updates still apply (no per-poll re-chunking). -->
                     <ItemsControl ItemsSource="{Binding Metrics}"
                                   Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <StackPanel Orientation="Vertical" />
+                                <!-- Each row trails a CompactColumnGap right margin so wrapped
+                                     columns separate; the panel's matching negative right margin
+                                     cancels the last column's trailing gap, keeping the widget's
+                                     inner padding symmetric. -->
+                                <WrapPanel Orientation="Vertical" MaxHeight="{Binding CompactColumnMaxHeight}"
+                                           Margin="{Binding Config.CompactColumnGap, Converter={StaticResource GapToMarginConverter}, ConverterParameter=NegativeRight}" />
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Grid Margin="0,1,0,1" ToolTip="{Binding Name}">
+                                <!-- Fixed row height (from the configured font size) keeps the
+                                     column-wrap math exact; the margin is horizontal-only so a
+                                     row's vertical footprint stays exactly its Height. -->
+                                <Grid Height="{Binding DataContext.CompactRowHeight, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      Margin="{Binding DataContext.Config.CompactColumnGap, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource GapToMarginConverter}, ConverterParameter=Right}">
+                                    <Grid.ToolTip>
+                                        <StackPanel>
+                                            <TextBlock>
+                                                <TextBlock.Text>
+                                                    <MultiBinding StringFormat="{}{0} — {1:0}%">
+                                                        <Binding Path="DisplayName" />
+                                                        <Binding Path="RemainingPercentage" />
+                                                    </MultiBinding>
+                                                </TextBlock.Text>
+                                            </TextBlock>
+                                            <TextBlock>
+                                                <TextBlock.Text>
+                                                    <MultiBinding Converter="{StaticResource ResetTimeConverter}">
+                                                        <Binding Path="ResetTime" />
+                                                        <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                    </MultiBinding>
+                                                </TextBlock.Text>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Grid.ToolTip>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="76" />
-                                        <ColumnDefinition Width="120" />
-                                        <ColumnDefinition Width="40" />
-                                        <ColumnDefinition Width="52" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
 
-                                    <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="White" FontSize="11"
+                                    <TextBlock Grid.Column="0" Text="{Binding DisplayName}" Foreground="White"
+                                               FontSize="{Binding DataContext.Config.WidgetFontSize, RelativeSource={RelativeSource AncestorType=Window}}"
                                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
 
-                                    <Border Grid.Column="1" Height="6" CornerRadius="3" Background="#33FFFFFF" VerticalAlignment="Center">
-                                        <Border HorizontalAlignment="Left" CornerRadius="3"
-                                                Width="{Binding RemainingPercentage, Converter={StaticResource PercentageToWidthConverter}, ConverterParameter=120}"
-                                                Background="{Binding RemainingPercentage, Converter={StaticResource QuotaToColorConverter}}" />
+                                    <Border Grid.Column="1" Height="6" CornerRadius="3" Background="#33FFFFFF" VerticalAlignment="Center"
+                                            HorizontalAlignment="Left"
+                                            Width="{Binding DataContext.Config.BarWidth, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            Margin="{Binding DataContext.Config.CompactCellGap, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource GapToMarginConverter}}">
+                                        <Border HorizontalAlignment="Left" CornerRadius="3">
+                                            <Border.Width>
+                                                <MultiBinding Converter="{StaticResource PercentageWidthMultiConverter}">
+                                                    <Binding Path="RemainingPercentage" />
+                                                    <Binding Path="DataContext.Config.BarWidth" RelativeSource="{RelativeSource AncestorType=Window}" />
+                                                </MultiBinding>
+                                            </Border.Width>
+                                            <Border.Background>
+                                                <MultiBinding Converter="{StaticResource MetricColorConverter}">
+                                                    <Binding Path="RemainingPercentage" />
+                                                    <Binding Path="CustomColor" />
+                                                </MultiBinding>
+                                            </Border.Background>
+                                        </Border>
                                     </Border>
 
                                     <TextBlock Grid.Column="2" Text="{Binding RemainingPercentage, StringFormat={}{0:0}%}"
-                                               Foreground="#CCCCCC" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                               Foreground="#CCCCCC" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               FontSize="{Binding DataContext.Config.WidgetFontSize, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource FontScaleConverter}, ConverterParameter=0.85}"
+                                               Margin="{Binding DataContext.Config.CompactCellGap, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource GapToMarginConverter}}"
+                                               Visibility="{Binding DataContext.Config.ShowNumericValues, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
-                                    <TextBlock Grid.Column="3" Foreground="#888888" FontSize="10"
-                                               HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <TextBlock Grid.Column="3" Foreground="#888888" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               FontSize="{Binding DataContext.Config.WidgetFontSize, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource FontScaleConverter}, ConverterParameter=0.85}"
+                                               Margin="{Binding DataContext.Config.CompactCellGap, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource GapToMarginConverter}}"
+                                               Visibility="{Binding DataContext.Config.ShowNumericValues, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}">
                                         <TextBlock.Text>
                                             <MultiBinding Converter="{StaticResource ResetTimeConverter}" ConverterParameter="short">
                                                 <Binding Path="ResetTime" />
