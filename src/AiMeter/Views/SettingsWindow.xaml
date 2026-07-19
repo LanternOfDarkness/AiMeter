@@ -7,7 +7,7 @@
         xmlns:converters="clr-namespace:AiMeter.Converters"
         xmlns:models="clr-namespace:AiMeter.Models"
         mc:Ignorable="d"
-        Title="AiMeter Settings" Height="520" Width="920" MinHeight="440" MinWidth="760"
+        Title="AiMeter Settings" Height="560" Width="660" MinHeight="480" MinWidth="560"
         WindowStartupLocation="CenterScreen" ResizeMode="CanResizeWithGrip"
         Icon="pack://application:,,,/app.ico"
         Background="#1C1C1E">
@@ -31,59 +31,143 @@
 
         <TextBlock Grid.Row="0" Text="AiMeter Settings" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,14" />
 
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="20" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+        <TabControl Grid.Row="1">
 
-            <!-- Left column: Appearance + Metrics -->
-            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
-                <StackPanel>
+            <!-- ===== Widget: overall look ===== -->
+            <TabItem Header="Widget">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,4,6,0">
+                    <StackPanel>
 
-                    <!-- Appearance -->
-                    <Border Style="{StaticResource SectionCard}">
-                        <StackPanel>
-                            <TextBlock Text="APPEARANCE" Style="{StaticResource SectionHeader}" />
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Text="APPEARANCE" Style="{StaticResource SectionHeader}" />
 
-                            <CheckBox Content="Enable widget opacity" IsChecked="{Binding Config.OpacityEnabled}" Margin="0,0,0,8" />
-                            <TextBlock Text="Widget Opacity" Foreground="White" Margin="0,0,0,6" />
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,14" IsEnabled="{Binding Config.OpacityEnabled}">
-                                <Slider Minimum="0.1" Maximum="1.0" Value="{Binding Config.WidgetOpacity}" Width="240" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding Config.WidgetOpacity, StringFormat={}{0:P0}}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                <CheckBox Content="Enable widget opacity" IsChecked="{Binding Config.OpacityEnabled}" Margin="0,0,0,8" />
+                                <TextBlock Text="Widget Opacity" Foreground="White" Margin="0,0,0,6" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,14" IsEnabled="{Binding Config.OpacityEnabled}">
+                                    <Slider Minimum="0.1" Maximum="1.0" Value="{Binding Config.WidgetOpacity}" Width="240" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Config.WidgetOpacity, StringFormat={}{0:P0}}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+
+                                <TextBlock Text="Background Opacity" Foreground="White" Margin="0,0,0,6" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                    <Slider Minimum="0.0" Maximum="1.0" Value="{Binding Config.BackgroundOpacity}" Width="240" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Config.BackgroundOpacity, StringFormat={}{0:P0}}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+
+                                <TextBlock Text="Widget Padding" Foreground="White" Margin="0,0,0,6" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Slider Minimum="2" Maximum="20" Value="{Binding Config.WidgetPadding}" Width="240" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Config.WidgetPadding, StringFormat={}{0:0}px}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
                             </StackPanel>
+                        </Border>
 
-                            <TextBlock Text="Background Opacity" Foreground="White" Margin="0,0,0,6" />
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
-                                <Slider Minimum="0.0" Maximum="1.0" Value="{Binding Config.BackgroundOpacity}" Width="240" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding Config.BackgroundOpacity, StringFormat={}{0:P0}}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Text="TEXT" Style="{StaticResource SectionHeader}" />
+
+                                <TextBlock Text="Font Size" Foreground="White" Margin="0,0,0,6" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                    <Slider Minimum="8" Maximum="18" Value="{Binding Config.WidgetFontSize}" Width="240" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Config.WidgetFontSize, StringFormat={}{0:0}px}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+
+                                <CheckBox Content="Show numeric values (% and reset time)" IsChecked="{Binding Config.ShowNumericValues}" />
+                                <TextBlock Text="When off, the widget shows just the label and colored bar; numbers stay available on hover."
+                                           Style="{StaticResource HintText}" />
                             </StackPanel>
+                        </Border>
 
-                            <TextBlock Text="Widget Padding" Foreground="White" Margin="0,0,0,6" />
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
-                                <Slider Minimum="2" Maximum="20" Value="{Binding Config.WidgetPadding}" Width="240" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding Config.WidgetPadding, StringFormat={}{0:0}px}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Text="LAYOUT" Style="{StaticResource SectionHeader}" />
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton Content="Compact (bars)" Margin="0,0,14,0"
+                                                 IsChecked="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Compact}}" />
+                                    <RadioButton Content="Taskbar (docked)"
+                                                 IsChecked="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Taskbar}}" />
+                                </StackPanel>
                             </StackPanel>
+                        </Border>
 
-                            <TextBlock Text="Widget Format" Foreground="White" Margin="0,0,0,6" />
-                            <StackPanel Orientation="Horizontal">
-                                <RadioButton Content="Compact (bars)" Margin="0,0,14,0"
-                                             IsChecked="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Compact}}" />
-                                <RadioButton Content="Taskbar (docked)"
-                                             IsChecked="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Taskbar}}" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ===== Compact: bars-layout tuning ===== -->
+            <TabItem Header="Compact">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,4,6,0">
+                    <StackPanel>
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Text="COMPACT BARS" Style="{StaticResource SectionHeader}" />
+                                <TextBlock Text="These apply to the Compact (bars) layout." Style="{StaticResource HintText}" Margin="0,0,0,12" />
+
+                                <TextBlock Text="Bars per Column" Foreground="White" Margin="0,0,0,6" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                    <Slider Minimum="1" Maximum="20" Value="{Binding Config.BarsPerColumn}" Width="240" VerticalAlignment="Center"
+                                            IsSnapToTickEnabled="True" TickFrequency="1" />
+                                    <TextBlock Text="{Binding Config.BarsPerColumn}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock Text="Once a column reaches this many bars, the rest wrap into a new column." Style="{StaticResource HintText}" Margin="0,-8,0,14" />
+
+                                <TextBlock Text="Column Gap" Foreground="White" Margin="0,0,0,6" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                    <Slider Minimum="0" Maximum="40" Value="{Binding Config.CompactColumnGap}" Width="240" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Config.CompactColumnGap, StringFormat={}{0:0}px}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+
+                                <TextBlock Text="Bar Width" Foreground="White" Margin="0,0,0,6" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                    <Slider Minimum="60" Maximum="300" Value="{Binding Config.BarWidth}" Width="240" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Config.BarWidth, StringFormat={}{0:0}px}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+
+                                <TextBlock Text="Cell Gap" Foreground="White" Margin="0,0,0,6" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Slider Minimum="0" Maximum="24" Value="{Binding Config.CompactCellGap}" Width="240" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Config.CompactCellGap, StringFormat={}{0:0}px}" Foreground="White" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
                             </StackPanel>
-                        </StackPanel>
-                    </Border>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
 
-                    <!-- Metrics -->
+            <!-- ===== Metrics: per-metric visibility, label, color ===== -->
+            <TabItem Header="Metrics">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,4,6,0">
                     <Border Style="{StaticResource SectionCard}">
                         <StackPanel>
                             <TextBlock Text="METRICS SHOWN" Style="{StaticResource SectionHeader}" />
+                            <TextBlock Text="Tick to show a metric; optionally give it a custom label (Compact mode) and bar color."
+                                       Style="{StaticResource HintText}" Margin="0,0,0,8" />
                             <ItemsControl ItemsSource="{Binding MetricOptions}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <CheckBox Content="{Binding Name}" IsChecked="{Binding IsSelected}" />
+                                        <StackPanel Margin="0,0,0,10">
+                                            <CheckBox Content="{Binding Name}" IsChecked="{Binding IsSelected}" />
+                                            <StackPanel Orientation="Horizontal" Margin="20,4,0,0">
+                                                <TextBlock Text="Label:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                                <TextBox Text="{Binding CustomLabel, UpdateSourceTrigger=PropertyChanged}" Width="120" VerticalAlignment="Center" />
+                                                <TextBlock Text="Color:" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="14,0,6,0" />
+                                                <ComboBox Width="120" VerticalAlignment="Center"
+                                                          ItemsSource="{Binding DataContext.ColorPresets, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                          SelectedValuePath="Value" SelectedValue="{Binding CustomColor}">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <Border Width="12" Height="12" CornerRadius="2" Margin="0,0,6,0"
+                                                                        BorderBrush="#55FFFFFF" BorderThickness="1"
+                                                                        Background="{Binding Value, TargetNullValue=Transparent}" />
+                                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+                                            </StackPanel>
+                                        </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
@@ -91,69 +175,68 @@
                                        Visibility="{Binding MetricOptions.Count, Converter={StaticResource CountToVisibilityConverter}}" />
                         </StackPanel>
                     </Border>
+                </ScrollViewer>
+            </TabItem>
 
-                </StackPanel>
-            </ScrollViewer>
+            <!-- ===== General: behavior, alerts, accounts ===== -->
+            <TabItem Header="General">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,4,6,0">
+                    <StackPanel>
 
-            <!-- Right column: General + Alerts + Accounts -->
-            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" Padding="6,0,0,0">
-                <StackPanel>
-
-                    <!-- General -->
-                    <Border Style="{StaticResource SectionCard}">
-                        <StackPanel>
-                            <TextBlock Text="GENERAL" Style="{StaticResource SectionHeader}" />
-                            <CheckBox Content="Launch at Windows startup" IsChecked="{Binding LaunchOnStartup}" Margin="0,0,0,8" />
-                            <CheckBox Content="Show over fullscreen apps" IsChecked="{Binding Config.ShowOverFullscreen}" />
-                            <TextBlock Text="Keeps the widget on top of borderless-fullscreen games. True exclusive-fullscreen apps can't be overlaid by any window."
-                                       Style="{StaticResource HintText}" />
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Notifications -->
-                    <Border Style="{StaticResource SectionCard}">
-                        <StackPanel>
-                            <TextBlock Text="ALERTS" Style="{StaticResource SectionHeader}" />
-                            <CheckBox Content="Enable notifications" IsChecked="{Binding Config.NotificationsEnabled}" Margin="0,0,0,10" />
-
-                            <StackPanel IsEnabled="{Binding Config.NotificationsEnabled}">
-                                <CheckBox Content="Notify when quota is low" IsChecked="{Binding Config.NotifyOnLowQuota}" />
-                                <StackPanel Orientation="Horizontal" Margin="20,2,0,10">
-                                    <TextBlock Text="Threshold:" Foreground="#AAAAAA" VerticalAlignment="Center" FontSize="11" />
-                                    <Slider Minimum="5" Maximum="50" Value="{Binding Config.LowQuotaThreshold}" Width="150" Margin="8,0,0,0" VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding Config.LowQuotaThreshold, StringFormat={}{0:0}%}" Foreground="White" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="11" />
-                                </StackPanel>
-
-                                <CheckBox Content="Notify when quota is exhausted" IsChecked="{Binding Config.NotifyOnExhausted}" />
-                                <CheckBox Content="Notify when quota resets" IsChecked="{Binding Config.NotifyOnReset}" />
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Text="GENERAL" Style="{StaticResource SectionHeader}" />
+                                <CheckBox Content="Launch at Windows startup" IsChecked="{Binding LaunchOnStartup}" Margin="0,0,0,8" />
+                                <CheckBox Content="Show over fullscreen apps" IsChecked="{Binding Config.ShowOverFullscreen}" />
+                                <TextBlock Text="Keeps the widget on top of borderless-fullscreen games. True exclusive-fullscreen apps can't be overlaid by any window."
+                                           Style="{StaticResource HintText}" />
                             </StackPanel>
-                        </StackPanel>
-                    </Border>
+                        </Border>
 
-                    <!-- Accounts (one row per provider) -->
-                    <Border Style="{StaticResource SectionCard}">
-                        <StackPanel>
-                            <TextBlock Text="ACCOUNTS" Style="{StaticResource SectionHeader}" />
-                            <ItemsControl ItemsSource="{Binding Accounts}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Margin="0,0,0,12">
-                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                                <Button Content="{Binding ButtonText}" Command="{Binding ActionCommand}" Width="150" Height="30" HorizontalAlignment="Left"
-                                                        Background="#5B5B5B" Foreground="White" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" />
-                                                <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusColor}" VerticalAlignment="Center" Margin="15,0,0,0" FontWeight="Medium" />
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Text="ALERTS" Style="{StaticResource SectionHeader}" />
+                                <CheckBox Content="Enable notifications" IsChecked="{Binding Config.NotificationsEnabled}" Margin="0,0,0,10" />
+
+                                <StackPanel IsEnabled="{Binding Config.NotificationsEnabled}">
+                                    <CheckBox Content="Notify when quota is low" IsChecked="{Binding Config.NotifyOnLowQuota}" />
+                                    <StackPanel Orientation="Horizontal" Margin="20,2,0,10">
+                                        <TextBlock Text="Threshold:" Foreground="#AAAAAA" VerticalAlignment="Center" FontSize="11" />
+                                        <Slider Minimum="5" Maximum="50" Value="{Binding Config.LowQuotaThreshold}" Width="150" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Config.LowQuotaThreshold, StringFormat={}{0:0}%}" Foreground="White" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="11" />
+                                    </StackPanel>
+
+                                    <CheckBox Content="Notify when quota is exhausted" IsChecked="{Binding Config.NotifyOnExhausted}" />
+                                    <CheckBox Content="Notify when quota resets" IsChecked="{Binding Config.NotifyOnReset}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Text="ACCOUNTS" Style="{StaticResource SectionHeader}" />
+                                <ItemsControl ItemsSource="{Binding Accounts}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,0,0,12">
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                    <Button Content="{Binding ButtonText}" Command="{Binding ActionCommand}" Width="150" Height="30" HorizontalAlignment="Left"
+                                                            Background="#5B5B5B" Foreground="White" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" />
+                                                    <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusColor}" VerticalAlignment="Center" Margin="15,0,0,0" FontWeight="Medium" />
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding HintText}" Style="{StaticResource HintText}" />
                                             </StackPanel>
-                                            <TextBlock Text="{Binding HintText}" Style="{StaticResource HintText}" />
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                    </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
 
-                </StackPanel>
-            </ScrollViewer>
-        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+        </TabControl>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
             <Button Content="Save &amp; Close" Command="{Binding SaveCommand}" CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"
