@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Linq;
@@ -25,6 +26,25 @@ public partial class SettingsViewModel : ObservableObject
 
     /// <summary>One login/logout row per usage provider (Claude, OpenCode, …).</summary>
     public ObservableCollection<AccountRowViewModel> Accounts { get; } = new();
+
+    /// <summary>
+    /// Preset palette for the per-metric color picker. "Auto" (null) reverts a metric to the
+    /// quota-threshold palette; the rest are stored as hex in AppConfig.MetricColors. A curated
+    /// list avoids pulling in a third-party color-picker control.
+    /// </summary>
+    public IReadOnlyList<ColorPreset> ColorPresets { get; } = new List<ColorPreset>
+    {
+        new("Auto (quota)", null),
+        new("Green", "#2ECC71"),
+        new("Blue", "#3498DB"),
+        new("Orange", "#E67E22"),
+        new("Red", "#E74C3C"),
+        new("Purple", "#9B59B6"),
+        new("Teal", "#1ABC9C"),
+        new("Pink", "#E84393"),
+        new("Yellow", "#F1C40F"),
+        new("Gray", "#95A5A6"),
+    };
 
     /// <summary>
     /// Launch-at-Windows-startup toggle. Backed directly by the registry (via
@@ -78,7 +98,9 @@ public partial class SettingsViewModel : ObservableObject
         if (MetricOptions.Any(o => o.Name == name)) return;
 
         var isSelected = Config.SelectedMetrics.Count == 0 || Config.SelectedMetrics.Contains(name);
-        MetricOptions.Add(new MetricOption(name, isSelected));
+        var label = Config.MetricLabels.TryGetValue(name, out var l) ? l : string.Empty;
+        var color = Config.MetricColors.TryGetValue(name, out var c) ? c : null;
+        MetricOptions.Add(new MetricOption(name, isSelected, label, color));
     }
 
     /// <summary>
@@ -91,6 +113,8 @@ public partial class SettingsViewModel : ObservableObject
         foreach (var option in MetricOptions)
         {
             option.IsSelected = Config.SelectedMetrics.Count == 0 || Config.SelectedMetrics.Contains(option.Name);
+            option.CustomLabel = Config.MetricLabels.TryGetValue(option.Name, out var l) ? l : string.Empty;
+            option.CustomColor = Config.MetricColors.TryGetValue(option.Name, out var c) ? c : null;
         }
     }
 
@@ -98,8 +122,18 @@ public partial class SettingsViewModel : ObservableObject
     private void Save(Window window)
     {
         Config.SelectedMetrics = MetricOptions.Where(o => o.IsSelected).Select(o => o.Name).ToList();
+
+        // Persist only the non-empty per-metric overrides, keyed by metric name (the same key
+        // ProviderManager.ApplyUserCustomizations reads back).
+        Config.MetricLabels = MetricOptions
+            .Where(o => !string.IsNullOrWhiteSpace(o.CustomLabel))
+            .ToDictionary(o => o.Name, o => o.CustomLabel.Trim());
+        Config.MetricColors = MetricOptions
+            .Where(o => !string.IsNullOrWhiteSpace(o.CustomColor))
+            .ToDictionary(o => o.Name, o => o.CustomColor!);
+
         _settingsManager.Save();
-        // Re-filter from cache so the widget reflects the new selection instantly
+        // Re-filter from cache so the widget reflects the new selection/labels/colors instantly
         // instead of waiting for the next poll tick. No network call.
         _providerManager.RefilterMetrics();
         // The settings window is a singleton: never Close() it (that disposes it), just hide.

@@ -29,6 +29,22 @@ public partial class WidgetViewModel : ObservableObject
     /// </summary>
     public bool IsEmptyState => HasFetchedOnce && !Config.HasClaudeSession && !Config.HasOpenCodeSession;
 
+    /// <summary>
+    /// Fixed pixel height of a single Compact bar row, derived from the configured font size so
+    /// the multi-column wrap math is exact. The row template pins its root to this height (no
+    /// outer margin), so a column of N rows is exactly N × this tall.
+    /// </summary>
+    public double CompactRowHeight => Math.Ceiling(Config.WidgetFontSize * 1.5) + 4;
+
+    /// <summary>
+    /// Height cap the Compact WrapPanel wraps at: once a column reaches BarsPerColumn rows it
+    /// starts a new column. 0 bars-per-column means a single unbounded column (never wraps).
+    /// The small epsilon absorbs floating-point rounding so exactly N rows fit per column.
+    /// </summary>
+    public double CompactColumnMaxHeight => Config.BarsPerColumn > 0
+        ? Config.BarsPerColumn * CompactRowHeight + 0.5
+        : double.PositiveInfinity;
+
     [ObservableProperty]
     private DateTime _now = DateTime.Now;
 
@@ -56,6 +72,14 @@ public partial class WidgetViewModel : ObservableObject
             if (e.PropertyName is nameof(AppConfig.HasClaudeSession) or nameof(AppConfig.HasOpenCodeSession))
             {
                 OnPropertyChanged(nameof(IsEmptyState));
+            }
+
+            // The Compact column layout is computed from these two settings; relay so the
+            // WrapPanel's row height / wrap cap re-bind when the user changes them in Settings.
+            if (e.PropertyName is nameof(AppConfig.WidgetFontSize) or nameof(AppConfig.BarsPerColumn))
+            {
+                OnPropertyChanged(nameof(CompactRowHeight));
+                OnPropertyChanged(nameof(CompactColumnMaxHeight));
             }
         };
 

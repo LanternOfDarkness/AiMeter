@@ -13,6 +13,22 @@ public partial class UsageMetric : ObservableObject
     [ObservableProperty]
     private string _name = string.Empty;
 
+    /// <summary>
+    /// The label the widget actually renders in Compact mode. Defaults to <see cref="Name"/>,
+    /// but <see cref="Managers.ProviderManager"/> overwrites it from the user's per-metric label
+    /// overrides (AppConfig.MetricLabels). Not provider data, so it's set outside
+    /// <see cref="UpdateFrom"/> and defaults back to Name when no override exists.
+    /// </summary>
+    [ObservableProperty]
+    private string _displayName = string.Empty;
+
+    /// <summary>
+    /// Optional per-metric bar color (hex) chosen by the user. Null = use the quota-threshold
+    /// palette. Set from AppConfig.MetricColors, not from the provider (see DisplayName note).
+    /// </summary>
+    [ObservableProperty]
+    private string? _customColor;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RemainingPercentage))]
     private double _remainingQuota;

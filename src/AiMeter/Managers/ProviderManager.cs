@@ -179,7 +179,32 @@ public partial class ProviderManager : ObservableObject, IProviderManager
                 // recreating the tile's elements on every poll.
                 Metrics[i].UpdateFrom(newMetric);
             }
+
+            // Overlay the user's per-metric label/color overrides. Applied to the live
+            // Metrics entry (whether just inserted or updated in place) rather than in
+            // UpdateFrom, since these come from settings, not the provider payload.
+            ApplyUserCustomizations(Metrics[i]);
         }
+    }
+
+    /// <summary>
+    /// Resolves a metric's user-facing DisplayName and CustomColor from the current settings'
+    /// per-metric override maps. Falls back to the metric's own Name / the quota palette (null)
+    /// when no override is set.
+    /// </summary>
+    private void ApplyUserCustomizations(UsageMetric metric)
+    {
+        var config = _settingsManager.Current;
+
+        metric.DisplayName = config.MetricLabels.TryGetValue(metric.Name, out var label)
+            && !string.IsNullOrWhiteSpace(label)
+                ? label
+                : metric.Name;
+
+        metric.CustomColor = config.MetricColors.TryGetValue(metric.Name, out var color)
+            && !string.IsNullOrWhiteSpace(color)
+                ? color
+                : null;
     }
 
     private int IndexOfByName(string name)

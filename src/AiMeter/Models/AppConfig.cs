@@ -21,6 +21,50 @@ public partial class AppConfig : ObservableObject
     [ObservableProperty]
     private double _backgroundOpacity = 0.6;
 
+    // --- Compact-mode layout customization (defaults match the previously hardcoded values,
+    // so existing users see no visual change on upgrade). ---
+
+    /// <summary>
+    /// Compact mode: how many bars stack in one column before wrapping into the next column.
+    /// 0 means a single unbounded column (the pre-1.2 behavior).
+    /// </summary>
+    [ObservableProperty]
+    private int _barsPerColumn = 6;
+
+    /// <summary>Compact mode: pixel width of each quota bar's track.</summary>
+    [ObservableProperty]
+    private double _barWidth = 120;
+
+    /// <summary>Compact mode: horizontal gap between the cells of a row (label / bar / % / reset).</summary>
+    [ObservableProperty]
+    private double _compactCellGap = 8;
+
+    /// <summary>
+    /// Compact mode: horizontal gap between wrapped bar columns. Only visible once
+    /// <see cref="BarsPerColumn"/> forces a second column.
+    /// </summary>
+    [ObservableProperty]
+    private double _compactColumnGap = 14;
+
+    /// <summary>Compact mode: base font size for the metric label (secondary text derives from it).</summary>
+    [ObservableProperty]
+    private double _widgetFontSize = 11;
+
+    /// <summary>
+    /// When false, the always-visible % and reset text are hidden in both layouts, leaving
+    /// just the label/code and the colored bar; the numbers stay available on hover.
+    /// </summary>
+    [ObservableProperty]
+    private bool _showNumericValues = true;
+
+    /// <summary>Per-metric display-name overrides (metric Name → custom label). Compact mode only.</summary>
+    [ObservableProperty]
+    private Dictionary<string, string> _metricLabels = new();
+
+    /// <summary>Per-metric bar-color overrides (metric Name → hex like "#2ECC71"); absent = quota palette.</summary>
+    [ObservableProperty]
+    private Dictionary<string, string> _metricColors = new();
+
     [ObservableProperty]
     private double? _widgetLeft;
 
