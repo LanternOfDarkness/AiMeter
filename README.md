@@ -14,16 +14,16 @@ architecture designed for OpenAI, Gemini, Grok, OpenRouter, DeepSeek, and others
 
 ## Download
 
-**Latest release: v1.1.0** —
-[AiMeter-v1.1.0-win-x64.zip](https://github.com/LanternOfDarkness/AiMeter/releases/download/v1.1.0/AiMeter-v1.1.0-win-x64.zip)
+**Latest release: v1.2.0** —
+[AiMeter-v1.2.0-win-x64.zip](https://github.com/LanternOfDarkness/AiMeter/releases/download/v1.2.0/AiMeter-v1.2.0-win-x64.zip)
 
 ```
-SHA-256: 31EB6A954245536D8128A265BFF626EC855806A203C7981ED25A8422258B36A1
+SHA-256: C726FA4129C7517296541D70BA49CCDBA5C7DB028494AB3910E4579257E12D23
 ```
 
 Framework-dependent build for **win-x64** — needs the .NET 9 Desktop Runtime and the WebView2
 Runtime (see [Requirements](#requirements)). Extract the zip and run `AiMeter.exe`.
-Verify the download with `Get-FileHash AiMeter-v1.1.0-win-x64.zip -Algorithm SHA256`.
+Verify the download with `Get-FileHash AiMeter-v1.2.0-win-x64.zip -Algorithm SHA256`.
 
 An Inno Setup installer (`installer/aimeter.iss`) is also available in this repo — see
 [Installation](#installation) to build and run it locally. It isn't code-signed, so Windows
@@ -36,9 +36,15 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 - **Multiple providers** — track Claude and OpenCode together; log into each under
   Settings → Accounts. Deselect any metric you don't want on the widget.
+- **Claude Extra Usage** — tracks Claude's pay-as-you-go spend limit as a dollar figure
+  (`$used / $limit`) with a proportional bar. On an "Unlimited" Extra Usage plan (no monthly
+  cap), it shows the prepaid balance left instead, with no bar.
 - **Floating widget** — always-on-top, draggable, remembers its position (and can sit over
   the taskbar).
   - **Compact** layout: a slim strip of thin bars with % and a short reset label (`5h`, `2d 3h`).
+    Fully customizable from Settings → Compact — bars-per-column (wraps into extra columns),
+    bar width, cell/column gaps, font size, per-metric custom label and bar color, and a
+    toggle to hide the always-visible numbers (they stay one hover away).
   - **Taskbar** layout: docks flush against the bottom of the screen, overlapping the
     taskbar — one thin vertical-fill column per metric showing a 3-letter code, the quota
     fill, the remaining % and a compact reset countdown (`3.3h`, `5.2d`) all at rest; hover a
@@ -53,6 +59,9 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes.
 - **Launch at startup** — optionally start AiMeter when you sign into Windows.
 - **Stay over fullscreen** — keeps the widget above borderless-fullscreen games (toggle in
   Settings → General). True exclusive-fullscreen apps can't be overlaid by any window.
+- **Game mode** — while a borderless-fullscreen game has focus on the widget's own monitor,
+  the widget automatically becomes click-through: still visible and on top, but clicks pass
+  straight through to the game. Reverts instantly when a normal window regains focus.
 - **Adjustable opacity** with an on-hover dim, or turn opacity off entirely.
 - **Configurable notifications** for low, exhausted, and reset quotas.
 - **Pick which metrics are shown** — deselected metrics stay listed so you can re-enable them.

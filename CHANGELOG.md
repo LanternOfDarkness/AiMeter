@@ -2,7 +2,7 @@
 
 All notable changes to AiMeter are documented in this file.
 
-## [Unreleased]
+## [1.2.0] - 2026-07-27
 
 ### Added
 - **Compact-mode customization**: the bars layout is now configurable in Settings ▸ Appearance.
