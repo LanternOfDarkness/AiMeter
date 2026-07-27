@@ -43,6 +43,10 @@
                             </MultiBinding>
                         </TextBlock.Text>
                     </TextBlock>
+                    <!-- Money metrics (Claude Extra Usage) add a spend/balance detail line
+                         beneath the percent summary - hidden for ordinary quota metrics. -->
+                    <TextBlock Text="{Binding TooltipDetail}"
+                               Visibility="{Binding IsMoneyMetric, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <TextBlock>
                         <TextBlock.Text>
                             <MultiBinding Converter="{StaticResource ResetTimeConverter}">
@@ -69,8 +73,19 @@
                 <Border CornerRadius="2" Background="#33FFFFFF" />
 
                 <!-- Quota fill: bottom-anchored scale, colored by the per-metric override or,
-                     failing that, the quota-threshold palette. -->
+                     failing that, the quota-threshold palette. Hidden for unbounded money
+                     metrics (Extra Usage on an "Unlimited" plan) - there's no cap to scale
+                     the fill against, so it's spend/balance text only (see below). -->
                 <Border CornerRadius="2" RenderTransformOrigin="0.5,1">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsUnbounded}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
                     <Border.Background>
                         <MultiBinding Converter="{StaticResource MetricColorConverter}">
                             <Binding Path="RemainingPercentage" />
@@ -98,13 +113,23 @@
                     </Rectangle.RenderTransform>
                 </Rectangle>
 
-                <!-- Remaining percentage, always visible - sits just under the code label, on
-                     top of the fill/track regardless of how full the bar is. -->
-                <TextBlock Text="{Binding RemainingPercentage, StringFormat={}{0:0}}"
-                           FontWeight="SemiBold" Foreground="White"
+                <!-- Remaining percentage (or, for money metrics, a rounded value/balance figure -
+                     see UsageMetric.ValueTextShort), always visible - sits just under the code
+                     label, on top of the fill/track regardless of how full the bar is. -->
+                <TextBlock FontWeight="SemiBold" Foreground="White"
                            HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0"
                            FontSize="{Binding DataContext.Config.WidgetFontSize, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource FontScaleConverter}, ConverterParameter=0.82;8;11}"
                            Visibility="{Binding DataContext.Config.ShowNumericValues, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="{Binding RemainingPercentage, StringFormat={}{0:0}}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsMoneyMetric}" Value="True">
+                                    <Setter Property="Text" Value="{Binding ValueTextShort}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
                     <TextBlock.Effect>
                         <DropShadowEffect BlurRadius="2" ShadowDepth="0" Opacity="0.9" Color="Black" />
                     </TextBlock.Effect>

@@ -159,6 +159,10 @@
                                                     </MultiBinding>
                                                 </TextBlock.Text>
                                             </TextBlock>
+                                            <!-- Money metrics (Claude Extra Usage) add a spend/balance detail line
+                                                 beneath the percent summary - hidden for ordinary quota metrics. -->
+                                            <TextBlock Text="{Binding TooltipDetail}"
+                                                       Visibility="{Binding IsMoneyMetric, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                             <TextBlock>
                                                 <TextBlock.Text>
                                                     <MultiBinding Converter="{StaticResource ResetTimeConverter}">
@@ -184,6 +188,18 @@
                                             HorizontalAlignment="Left"
                                             Width="{Binding DataContext.Config.BarWidth, RelativeSource={RelativeSource AncestorType=Window}}"
                                             Margin="{Binding DataContext.Config.CompactCellGap, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource GapToMarginConverter}}">
+                                        <!-- Unbounded money metrics (Extra Usage on an "Unlimited" plan) have no
+                                             cap to measure a fill against - hide the bar rather than render a
+                                             misleading always-full or always-empty track. -->
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsUnbounded}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
                                         <Border HorizontalAlignment="Left" CornerRadius="3">
                                             <Border.Width>
                                                 <MultiBinding Converter="{StaticResource PercentageWidthMultiConverter}">
@@ -200,11 +216,25 @@
                                         </Border>
                                     </Border>
 
-                                    <TextBlock Grid.Column="2" Text="{Binding RemainingPercentage, StringFormat={}{0:0}%}"
+                                    <!-- Value column: a bare percentage for ordinary quota metrics, or the
+                                         formatted dollar text (used/limit, or balance/spend for unbounded
+                                         plans) for money metrics like Claude Extra Usage. -->
+                                    <TextBlock Grid.Column="2"
                                                Foreground="#CCCCCC" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                FontSize="{Binding DataContext.Config.WidgetFontSize, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource FontScaleConverter}, ConverterParameter=0.85}"
                                                Margin="{Binding DataContext.Config.CompactCellGap, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource GapToMarginConverter}}"
-                                               Visibility="{Binding DataContext.Config.ShowNumericValues, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                               Visibility="{Binding DataContext.Config.ShowNumericValues, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="{Binding RemainingPercentage, StringFormat={}{0:0}%}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsMoneyMetric}" Value="True">
+                                                        <Setter Property="Text" Value="{Binding ValueText}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
 
                                     <TextBlock Grid.Column="3" Foreground="#888888" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                FontSize="{Binding DataContext.Config.WidgetFontSize, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource FontScaleConverter}, ConverterParameter=0.85}"

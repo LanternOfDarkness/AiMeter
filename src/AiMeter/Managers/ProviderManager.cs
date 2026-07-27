@@ -153,6 +153,11 @@ public partial class ProviderManager : ObservableObject, IProviderManager
 
         foreach (var metric in latest)
         {
+            // Unbounded money metrics (Claude Extra Usage on an "Unlimited" plan) always
+            // report RemainingPercentage=100 since there's no cap to measure against -
+            // skip them so they don't fire a spurious "reset" alert every single poll.
+            if (metric.IsUnbounded) continue;
+
             _previousByMetricName.TryGetValue(metric.Name, out var previous);
             var currentPct = metric.RemainingPercentage;
 

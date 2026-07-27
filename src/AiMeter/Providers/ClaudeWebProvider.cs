@@ -83,6 +83,7 @@ public class ClaudeWebProvider : IProvider
     {
         using var doc = JsonDocument.Parse(json);
         var yieldedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var money = ParseExtraUsageMoney(doc.RootElement);
 
         if (doc.RootElement.TryGetProperty("limits", out var limits) && limits.ValueKind == JsonValueKind.Array)
         {
@@ -91,7 +92,7 @@ public class ClaudeWebProvider : IProvider
                 var kind = limit.TryGetProperty("kind", out var kindProp) && kindProp.ValueKind == JsonValueKind.String
                     ? kindProp.GetString()
                     : null;
-                
+
                 double percentUsed = 0;
                 if (limit.TryGetProperty("percent", out var percentProp) && percentProp.ValueKind == JsonValueKind.Number)
                 {
@@ -105,7 +106,7 @@ public class ClaudeWebProvider : IProvider
                 var name = NameForLimit(kind, limit);
                 yieldedNames.Add(name);
 
-                yield return new UsageMetric
+                var metric = new UsageMetric
                 {
                     Name = name,
                     TotalQuota = 100,
@@ -113,99 +114,184 @@ public class ClaudeWebProvider : IProvider
                     ResetTime = resetsAt,
                     WindowDuration = WindowDurationForKind(kind)
                 };
+
+                // The limits[] array's own percent already reflects the plan's chosen quota
+                // shape (bounded or not), so it stays the source of truth for RemainingQuota
+                // here - money only adds the dollar figures for display.
+                if (money is not null && name.Equals("Claude Extra Usage", StringComparison.Ordinal))
+                {
+                    ApplyMoney(metric, money);
+                }
+
+                yield return metric;
             }
         }
 
-        if (!yieldedNames.Contains("Claude Extra Usage"))
+        if (!yieldedNames.Contains("Claude Extra Usage") && money is not null)
         {
-            double usedInDollars = 0;
-            double limitInDollars = 0;
-            double percentUsed = 0;
-            bool hasExtraUsageData = false;
-
-            if (doc.RootElement.TryGetProperty("extra_usage", out var extraUsage) && extraUsage.ValueKind == JsonValueKind.Object)
-            {
-                bool isEnabled = !extraUsage.TryGetProperty("is_enabled", out var enabledProp) || enabledProp.ValueKind != JsonValueKind.False;
-                if (isEnabled)
-                {
-                    hasExtraUsageData = true;
-                    double decPlaces = 2;
-                    if (TryGetDoubleVal(extraUsage, "decimal_places", out var dp) && dp >= 0) decPlaces = dp;
-                    double divisor = Math.Pow(10, decPlaces);
-
-                    if (TryGetDoubleVal(extraUsage, "used_credits", out var uc))
-                        usedInDollars = uc / divisor;
-                    else if (TryGetDoubleVal(extraUsage, "used", out var u))
-                        usedInDollars = u;
-                    else if (TryGetDoubleVal(extraUsage, "used_cents", out var uc2))
-                        usedInDollars = uc2 / 100.0;
-
-                    if (TryGetDoubleVal(extraUsage, "monthly_limit", out var ml))
-                        limitInDollars = ml;
-                    else if (TryGetDoubleVal(extraUsage, "limit", out var l))
-                        limitInDollars = l;
-                    else if (TryGetDoubleVal(extraUsage, "limit_cents", out var lc))
-                        limitInDollars = lc / 100.0;
-
-                    if (TryGetDoubleVal(extraUsage, "utilization", out var ut))
-                        percentUsed = ut;
-                    else if (TryGetDoubleVal(extraUsage, "percent", out var p))
-                        percentUsed = p;
-                }
-            }
-
-            if (doc.RootElement.TryGetProperty("spend", out var spend) && spend.ValueKind == JsonValueKind.Object)
-            {
-                hasExtraUsageData = true;
-                if (spend.TryGetProperty("used", out var spendUsed) && spendUsed.ValueKind == JsonValueKind.Object)
-                {
-                    double exp = 2;
-                    if (TryGetDoubleVal(spendUsed, "exponent", out var e) && e >= 0) exp = e;
-                    if (TryGetDoubleVal(spendUsed, "amount_minor", out var am))
-                        usedInDollars = am / Math.Pow(10, exp);
-                }
-
-                if (TryGetDoubleVal(spend, "limit", out var sl))
-                    limitInDollars = sl;
-
-                if (TryGetDoubleVal(spend, "percent", out var sp))
-                    percentUsed = sp;
-            }
-
-            if (hasExtraUsageData)
-            {
-                if (limitInDollars > 0)
-                {
-                    percentUsed = Math.Min(100.0, (usedInDollars / limitInDollars) * 100.0);
-                }
-
-                yield return new UsageMetric
-                {
-                    Name = "Claude Extra Usage",
-                    TotalQuota = 100,
-                    RemainingQuota = Math.Max(0, 100 - percentUsed),
-                    WindowDuration = TimeSpan.FromDays(30)
-                };
-            }
+            yield return BuildExtraUsageMetric(money);
         }
+    }
 
-        if (!yieldedNames.Contains("Claude Balance") && (doc.RootElement.TryGetProperty("balance", out var balObj) || doc.RootElement.TryGetProperty("account_balance", out balObj)) && balObj.ValueKind == JsonValueKind.Object)
+    /// <summary>
+    /// Pulls Extra Usage's spend figures from wherever the payload puts them. Two overlapping
+    /// sources exist: the legacy top-level <c>extra_usage</c> object (numbers scaled by its own
+    /// <c>decimal_places</c>) and the newer <c>spend</c> object (money as {amount_minor,
+    /// exponent} pairs, plus an authoritative <c>percent</c> and optional prepaid
+    /// <c>balance</c>/<c>cap</c>). Later sources win on conflict since they're the more current
+    /// shape; <c>extra_usage.utilization</c> is kept as the percent of record when present since
+    /// it carries more decimal precision than <c>spend.percent</c>'s rounded integer.
+    /// </summary>
+    private static ExtraUsageMoney? ParseExtraUsageMoney(JsonElement root)
+    {
+        double? used = null, limit = null, balance = null, percent = null;
+        string? currency = null;
+        bool hasData = false;
+
+        if (root.TryGetProperty("extra_usage", out var extraUsage) && extraUsage.ValueKind == JsonValueKind.Object
+            && (!extraUsage.TryGetProperty("is_enabled", out var enabledProp) || enabledProp.ValueKind != JsonValueKind.False))
         {
-            if (TryGetDoubleVal(balObj, "amount", out var amt) || TryGetDoubleVal(balObj, "balance", out amt) || TryGetDoubleVal(balObj, "available", out amt))
-            {
-                double limit = 100;
-                if (TryGetDoubleVal(balObj, "limit", out var l) && l > 0) limit = l;
-                double percentRemaining = limit > 0 ? Math.Min(100.0, (amt / limit) * 100.0) : 100.0;
+            hasData = true;
+            double decPlaces = 2;
+            if (TryGetDoubleVal(extraUsage, "decimal_places", out var dp) && dp >= 0) decPlaces = dp;
+            double divisor = Math.Pow(10, decPlaces);
 
-                yield return new UsageMetric
-                {
-                    Name = "Claude Balance",
-                    TotalQuota = 100,
-                    RemainingQuota = Math.Max(0, percentRemaining),
-                    WindowDuration = TimeSpan.FromDays(30)
-                };
-            }
+            if (TryGetDoubleVal(extraUsage, "used_credits", out var uc))
+                used = uc / divisor;
+            else if (TryGetDoubleVal(extraUsage, "used", out var u))
+                used = u;
+            else if (TryGetDoubleVal(extraUsage, "used_cents", out var uc2))
+                used = uc2 / 100.0;
+
+            if (TryGetDoubleVal(extraUsage, "monthly_limit", out var ml))
+                limit = ml / divisor;
+            else if (TryGetDoubleVal(extraUsage, "limit", out var l))
+                limit = l;
+            else if (TryGetDoubleVal(extraUsage, "limit_cents", out var lc))
+                limit = lc / 100.0;
+
+            if (TryGetDoubleVal(extraUsage, "utilization", out var ut))
+                percent = ut;
+            else if (TryGetDoubleVal(extraUsage, "percent", out var p))
+                percent = p;
+
+            if (extraUsage.TryGetProperty("currency", out var curProp) && curProp.ValueKind == JsonValueKind.String)
+                currency = curProp.GetString();
         }
+
+        if (root.TryGetProperty("spend", out var spend) && spend.ValueKind == JsonValueKind.Object
+            && (!spend.TryGetProperty("enabled", out var spendEnabledProp) || spendEnabledProp.ValueKind != JsonValueKind.False))
+        {
+            hasData = true;
+
+            if (TryGetMoney(spend, "used", out var spendUsed, out var usedCurrency))
+            {
+                used = spendUsed;
+                currency ??= usedCurrency;
+            }
+
+            if (TryGetMoney(spend, "limit", out var spendLimit, out var limitCurrency))
+            {
+                limit = spendLimit;
+                currency ??= limitCurrency;
+            }
+            else if (spend.TryGetProperty("cap", out var cap) && cap.ValueKind == JsonValueKind.Object)
+            {
+                if (TryGetMoney(cap, "money", out var capMoney, out var capMoneyCurrency))
+                {
+                    limit = capMoney;
+                    currency ??= capMoneyCurrency;
+                }
+                else if (TryGetMoney(cap, "credits", out var capCredits, out var capCreditsCurrency))
+                {
+                    limit = capCredits;
+                    currency ??= capCreditsCurrency;
+                }
+            }
+
+            if (TryGetMoney(spend, "balance", out var spendBalance, out var balanceCurrency))
+            {
+                balance = spendBalance;
+                currency ??= balanceCurrency;
+            }
+
+            // Only fills in when extra_usage.utilization above didn't already supply a
+            // (more precise) percent.
+            if (percent is null && TryGetDoubleVal(spend, "percent", out var sp))
+                percent = sp;
+        }
+
+        return hasData ? new ExtraUsageMoney(used, limit, balance, percent, currency) : null;
+    }
+
+    private static void ApplyMoney(UsageMetric metric, ExtraUsageMoney money)
+    {
+        metric.IsMoneyMetric = true;
+        metric.IsUnbounded = money.IsUnbounded;
+        metric.UsedAmount = money.Used;
+        metric.LimitAmount = money.Limit is > 0 ? money.Limit : null;
+        metric.BalanceAmount = money.Balance;
+        metric.Currency = money.Currency;
+    }
+
+    private static UsageMetric BuildExtraUsageMetric(ExtraUsageMoney money)
+    {
+        double remainingQuota;
+        if (money.IsUnbounded)
+        {
+            // No cap to measure against - never render as "0% left"; the widget hides the
+            // bar entirely for unbounded money metrics (see IsUnbounded) and shows spend/
+            // balance text instead.
+            remainingQuota = 100;
+        }
+        else
+        {
+            var percentUsed = money.Percent
+                ?? (money.Limit is > 0 && money.Used is not null
+                    ? Math.Min(100.0, (money.Used.Value / money.Limit.Value) * 100.0)
+                    : 0.0);
+            remainingQuota = Math.Max(0, 100 - percentUsed);
+        }
+
+        var metric = new UsageMetric
+        {
+            Name = "Claude Extra Usage",
+            TotalQuota = 100,
+            RemainingQuota = remainingQuota,
+            WindowDuration = TimeSpan.FromDays(30)
+        };
+        ApplyMoney(metric, money);
+        return metric;
+    }
+
+    /// <summary>Parsed Extra Usage figures in major currency units (e.g. dollars), merged from whichever payload fields supplied them.</summary>
+    private sealed record ExtraUsageMoney(double? Used, double? Limit, double? Balance, double? Percent, string? Currency)
+    {
+        /// <summary>No monthly cap and no server-reported percent - Claude's "Unlimited" Extra Usage plan.</summary>
+        public bool IsUnbounded => Limit is not > 0 && Percent is null;
+    }
+
+    /// <summary>Reads a {amount_minor, exponent, currency} money object into major units. Returns false for missing/null/non-object values.</summary>
+    private static bool TryGetMoney(JsonElement parent, string propertyName, out double major, out string? currency)
+    {
+        major = 0;
+        currency = null;
+
+        if (!parent.TryGetProperty(propertyName, out var val) || val.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (!TryGetDoubleVal(val, "amount_minor", out var minor))
+            return false;
+
+        double exp = 2;
+        if (TryGetDoubleVal(val, "exponent", out var e) && e >= 0) exp = e;
+
+        major = minor / Math.Pow(10, exp);
+
+        if (val.TryGetProperty("currency", out var curProp) && curProp.ValueKind == JsonValueKind.String)
+            currency = curProp.GetString();
+
+        return true;
     }
 
     private static bool TryGetDoubleVal(JsonElement element, string propertyName, out double value)

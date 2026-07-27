@@ -39,6 +39,80 @@ public class ClaudeWebProviderTests
         }
     }";
 
+    // Captured verbatim (field-for-field) from a live claude.ai /usage response on a "Limited"
+    // Extra Usage plan - see ClaudeWebProviderTests for why monthly_limit/used_credits need
+    // decimal_places scaling and spend.limit is an object, not a bare number.
+    private const string RealLimitedExtraUsageJson = @"{
+        ""limits"": [
+            { ""kind"": ""session"", ""percent"": 2 },
+            { ""kind"": ""weekly_all"", ""percent"": 0 }
+        ],
+        ""extra_usage"": {
+            ""is_enabled"": true,
+            ""monthly_limit"": 7000,
+            ""used_credits"": 5342.0,
+            ""utilization"": 76.31428571428572,
+            ""currency"": ""USD"",
+            ""decimal_places"": 2
+        },
+        ""spend"": {
+            ""used"": { ""amount_minor"": 5342, ""currency"": ""USD"", ""exponent"": 2 },
+            ""limit"": { ""amount_minor"": 7000, ""currency"": ""USD"", ""exponent"": 2 },
+            ""percent"": 76,
+            ""enabled"": true,
+            ""cap"": { ""money"": null, ""credits"": { ""amount_minor"": 7000, ""exponent"": 2 } },
+            ""balance"": null
+        }
+    }";
+
+    // Synthetic "Unlimited" plan shape: no monthly cap anywhere (monthly_limit/limit/cap all
+    // null) and no server percent, with a prepaid credit balance still being drawn down.
+    private const string UnlimitedExtraUsageWithBalanceJson = @"{
+        ""limits"": [ { ""kind"": ""session"", ""percent"": 5 } ],
+        ""extra_usage"": {
+            ""is_enabled"": true,
+            ""monthly_limit"": null,
+            ""used_credits"": 5842.0,
+            ""utilization"": null,
+            ""currency"": ""USD"",
+            ""decimal_places"": 2
+        },
+        ""spend"": {
+            ""used"": { ""amount_minor"": 5842, ""currency"": ""USD"", ""exponent"": 2 },
+            ""limit"": null,
+            ""percent"": null,
+            ""enabled"": true,
+            ""cap"": { ""money"": null, ""credits"": null },
+            ""balance"": { ""amount_minor"": 4158, ""currency"": ""USD"", ""exponent"": 2 }
+        }
+    }";
+
+    private const string UnlimitedExtraUsageWithoutBalanceJson = @"{
+        ""limits"": [ { ""kind"": ""session"", ""percent"": 5 } ],
+        ""extra_usage"": {
+            ""is_enabled"": true,
+            ""monthly_limit"": null,
+            ""used_credits"": 5842.0,
+            ""utilization"": null,
+            ""currency"": ""USD"",
+            ""decimal_places"": 2
+        },
+        ""spend"": {
+            ""used"": { ""amount_minor"": 5842, ""currency"": ""USD"", ""exponent"": 2 },
+            ""limit"": null,
+            ""percent"": null,
+            ""enabled"": true,
+            ""cap"": { ""money"": null, ""credits"": null },
+            ""balance"": null
+        }
+    }";
+
+    private const string ExtraUsageDisabledJson = @"{
+        ""limits"": [ { ""kind"": ""session"", ""percent"": 5 } ],
+        ""extra_usage"": { ""is_enabled"": false },
+        ""spend"": { ""enabled"": false }
+    }";
+
     private static ClaudeWebProvider Build(FakeClaudeSession session, FakeClaudeApiClient api) =>
         new(session, api, NullLogger<ClaudeWebProvider>.Instance);
 
@@ -71,6 +145,14 @@ public class ClaudeWebProviderTests
         var extra = metrics.Single(m => m.Name == "Claude Extra Usage");
         extra.RemainingQuota.Should().Be(85);
         extra.WindowDuration.Should().Be(System.TimeSpan.FromDays(30));
+
+        // Money fields from the top-level extra_usage object should still enrich the
+        // limits[]-array metric even though the array's own percent (not the money) drives
+        // RemainingQuota here.
+        extra.IsMoneyMetric.Should().BeTrue();
+        extra.IsUnbounded.Should().BeFalse();
+        extra.UsedAmount.Should().Be(10.0);
+        extra.LimitAmount.Should().Be(50.0);
 
         MetricLabelConverter.CodeFor(extra.Name).Should().Be("CEU");
     }
@@ -116,5 +198,79 @@ public class ClaudeWebProviderTests
         metrics.Should().HaveCount(2);
         metrics.Single(m => m.Name == "Claude Session").RemainingQuota.Should().Be(90);
         metrics.Single(m => m.Name == "Claude Extra Usage").RemainingQuota.Should().Be(75);
+    }
+
+    [Fact]
+    public async Task Real_limited_payload_uses_server_percent_and_scaled_dollar_amounts()
+    {
+        // Regression test for the bug this feature fixes: monthly_limit/used_credits are minor
+        // units scaled by decimal_places (not already dollars), and spend.limit/spend.balance
+        // are {amount_minor, exponent} objects, not bare numbers - so RemainingQuota used to
+        // come out as ~99% instead of the correct ~24%.
+        var api = new FakeClaudeApiClient()
+            .When("/api/organizations", 200, OrgsJson)
+            .When("/api/organizations/org_12345/usage", 200, RealLimitedExtraUsageJson);
+        var provider = Build(new FakeClaudeSession { HasSession = true }, api);
+
+        var metrics = await provider.GetMetricsAsync();
+
+        var extra = metrics.Single(m => m.Name == "Claude Extra Usage");
+        extra.RemainingQuota.Should().BeApproximately(23.6857, 0.01);
+        extra.IsMoneyMetric.Should().BeTrue();
+        extra.IsUnbounded.Should().BeFalse();
+        extra.UsedAmount.Should().BeApproximately(53.42, 0.001);
+        extra.LimitAmount.Should().BeApproximately(70.00, 0.001);
+        extra.BalanceAmount.Should().BeNull();
+        extra.Currency.Should().Be("USD");
+        extra.ValueText.Should().Be("$53.42 / $70.00");
+    }
+
+    [Fact]
+    public async Task Unlimited_plan_with_balance_shows_balance_left_and_no_percent_cap()
+    {
+        var api = new FakeClaudeApiClient()
+            .When("/api/organizations", 200, OrgsJson)
+            .When("/api/organizations/org_12345/usage", 200, UnlimitedExtraUsageWithBalanceJson);
+        var provider = Build(new FakeClaudeSession { HasSession = true }, api);
+
+        var metrics = await provider.GetMetricsAsync();
+
+        var extra = metrics.Single(m => m.Name == "Claude Extra Usage");
+        extra.IsMoneyMetric.Should().BeTrue();
+        extra.IsUnbounded.Should().BeTrue();
+        extra.LimitAmount.Should().BeNull();
+        extra.UsedAmount.Should().BeApproximately(58.42, 0.001);
+        extra.BalanceAmount.Should().BeApproximately(41.58, 0.001);
+        extra.ValueText.Should().Be("$41.58 left");
+        extra.RemainingQuota.Should().Be(100); // no cap to be "low" against
+    }
+
+    [Fact]
+    public async Task Unlimited_plan_without_balance_shows_amount_spent()
+    {
+        var api = new FakeClaudeApiClient()
+            .When("/api/organizations", 200, OrgsJson)
+            .When("/api/organizations/org_12345/usage", 200, UnlimitedExtraUsageWithoutBalanceJson);
+        var provider = Build(new FakeClaudeSession { HasSession = true }, api);
+
+        var metrics = await provider.GetMetricsAsync();
+
+        var extra = metrics.Single(m => m.Name == "Claude Extra Usage");
+        extra.IsUnbounded.Should().BeTrue();
+        extra.BalanceAmount.Should().BeNull();
+        extra.ValueText.Should().Be("$58.42 used");
+    }
+
+    [Fact]
+    public async Task Disabled_extra_usage_yields_no_metric()
+    {
+        var api = new FakeClaudeApiClient()
+            .When("/api/organizations", 200, OrgsJson)
+            .When("/api/organizations/org_12345/usage", 200, ExtraUsageDisabledJson);
+        var provider = Build(new FakeClaudeSession { HasSession = true }, api);
+
+        var metrics = await provider.GetMetricsAsync();
+
+        metrics.Should().NotContain(m => m.Name == "Claude Extra Usage");
     }
 }
