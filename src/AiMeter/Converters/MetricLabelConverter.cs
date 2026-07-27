@@ -30,6 +30,7 @@ public class MetricLabelConverter : IValueConverter
         if (name.StartsWith("Claude Session", StringComparison.Ordinal)) return "CSE";
         if (name.StartsWith("Claude Weekly (", StringComparison.Ordinal)) return "CWS";
         if (name.StartsWith("Claude Weekly", StringComparison.Ordinal)) return "CWK";
+        if (name.StartsWith("Claude Extra", StringComparison.Ordinal)) return "CEU";
         if (name.StartsWith("OpenCode Rolling", StringComparison.Ordinal)) return "OCR";
         if (name.StartsWith("OpenCode Weekly", StringComparison.Ordinal)) return "OCW";
         if (name.StartsWith("OpenCode Monthly", StringComparison.Ordinal)) return "OCM";

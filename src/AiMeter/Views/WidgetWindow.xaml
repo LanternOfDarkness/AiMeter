@@ -107,13 +107,13 @@
             <Grid DockPanel.Dock="Top"
                   Visibility="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToVisibilityConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Compact}}">
 
-                <!-- Loading skeleton: shown until the first poll completes. -->
+                <!-- Loading skeleton: shown until the first poll completes or when no metrics are loaded. -->
                 <StackPanel Margin="14,4,14,4" Opacity="0.45"
-                            Visibility="{Binding HasFetchedOnce, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                            Visibility="{Binding ShowSkeleton, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Border Height="6" Width="180" CornerRadius="3" Background="#444444" />
                 </StackPanel>
 
-                <StackPanel Visibility="{Binding HasFetchedOnce, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel Visibility="{Binding ShowRealContent, Converter={StaticResource BooleanToVisibilityConverter}}">
 
                     <!-- Empty state: no provider logged in at all. Doubles as a call-to-action;
                          click routes to Settings instead of starting a window drag. -->
@@ -130,7 +130,7 @@
                          until CompactColumnMaxHeight (BarsPerColumn × row height) is reached, then
                          wrap into the next column. Binds the same Metrics collection so
                          ProviderManager's in-place updates still apply (no per-poll re-chunking). -->
-                    <ItemsControl ItemsSource="{Binding Metrics}"
+                    <ItemsControl ItemsSource="{Binding Metrics}" Grid.IsSharedSizeScope="True"
                                   Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -170,7 +170,7 @@
                                         </StackPanel>
                                     </Grid.ToolTip>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="CompactLabelColumn" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
@@ -234,7 +234,7 @@
                      SizeToContent="Width" collapse the window to almost nothing while
                      waiting for the first poll. -->
                 <StackPanel Orientation="Horizontal" Opacity="0.45"
-                            Visibility="{Binding HasFetchedOnce, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                            Visibility="{Binding ShowSkeleton, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Border Width="28" Margin="2,6,2,6" CornerRadius="2" Background="#444444" />
                     <Border Width="28" Margin="2,6,2,6" CornerRadius="2" Background="#444444" />
                     <Border Width="28" Margin="2,6,2,6" CornerRadius="2" Background="#444444" />
@@ -245,7 +245,7 @@
                      bottom-anchored ScaleTransform fills have real pixels to scale within -
                      a vertical StackPanel would size each child to its own natural (near-zero)
                      content height instead of the available space. -->
-                <Grid Visibility="{Binding HasFetchedOnce, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid Visibility="{Binding ShowRealContent, Converter={StaticResource BooleanToVisibilityConverter}}">
 
                     <!-- Empty state: just the lock glyph, centered - no room for text at
                          taskbar height. Click routes to Settings. -->

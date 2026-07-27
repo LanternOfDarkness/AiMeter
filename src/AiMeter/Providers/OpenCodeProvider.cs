@@ -74,10 +74,13 @@ public class OpenCodeProvider : IProvider
                 return metrics;
             }
 
-            var workspacePath = ExtractWorkspaceGoPath(goBody);
+            var currentUrl = _apiClient.CurrentUrl;
+            var workspacePath = ExtractWorkspaceGoPath(currentUrl) ?? ExtractWorkspaceGoPath(goBody);
+            _logger.LogInformation("OpenCode /go response length: {Length}, currentUrl: {Url}, extracted workspace path: {Path}", goBody.Length, currentUrl, workspacePath);
+
             if (workspacePath is null)
             {
-                _logger.LogWarning("OpenCode: no /workspace/{{id}}/go link on the Go page (no workspace yet?).");
+                _logger.LogWarning("OpenCode: no /workspace/.../go link on the Go page (currentUrl: {Url}, preview snippet: {Snippet})", currentUrl, goBody.Length > 200 ? goBody[..200] : goBody);
                 metrics.Add(new UsageMetric { Name = "OpenCode (No Workspace)", TotalQuota = 100, RemainingQuota = 0 });
                 return metrics;
             }
@@ -121,8 +124,26 @@ public class OpenCodeProvider : IProvider
     /// </summary>
     private static string? ExtractWorkspaceGoPath(string html)
     {
-        var m = Regex.Match(html, "/workspace/wrk_[A-Za-z0-9]+/go");
-        return m.Success ? m.Value : null;
+        var m1 = Regex.Match(html, @"/workspace/([A-Za-z0-9_-]+)(?:/go)?");
+        if (m1.Success && !m1.Groups[1].Value.Equals("auth", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"/workspace/{m1.Groups[1].Value}/go";
+        }
+
+        var m2 = Regex.Match(html, @"""workspace_?(?:id)?""\s*:\s*""(?<id>[A-Za-z0-9_-]+)""");
+        if (m2.Success && !m2.Groups["id"].Value.Equals("auth", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"/workspace/{m2.Groups["id"].Value}/go";
+        }
+
+        var m3 = Regex.Match(html, @"href=[""'](/workspace/[^""']+)[""']");
+        if (m3.Success)
+        {
+            var p = m3.Groups[1].Value;
+            return p.EndsWith("/go") ? p : p.TrimEnd('/') + "/go";
+        }
+
+        return null;
     }
 
     /// <summary>

@@ -18,6 +18,8 @@ All notable changes to AiMeter are documented in this file.
   Settings ▸ Metrics Shown (Taskbar keeps its auto 3-letter code).
 - **Per-metric color** — pick a bar color per metric (or "Auto" to keep the quota-threshold
   palette) from Settings ▸ Metrics Shown; applies in both layouts.
+- **Claude Extra Usage money metric** — support for tracking Claude's pay-as-you-go money limit
+  ("Claude Extra Usage") with 30-day reset calculation and `CEU` taskbar code.
 - **Game mode**: while a borderless-fullscreen app (a game) is in the foreground on the
   widget's own monitor, the widget automatically becomes click-through — it stays visible
   and on top, but the mouse passes straight through it to the game underneath instead of
@@ -28,6 +30,12 @@ All notable changes to AiMeter are documented in this file.
 - **Settings window reorganized into tabs** (Widget · Compact · Metrics · General) so the
   growing list of options no longer stacks into one long scroll; the window is now a more
   focused size with dark-themed tabbed navigation.
+
+### Fixed
+- **Claude session status persistence** — fixed issue where background API requests executed against
+  a stale `/login` page context returned `401 Unauthorized` and prematurely wiped active login status.
+- **Dynamic custom label width** — Compact mode metric row labels now automatically resize to fit
+  configured custom label text instead of clipping against a hardcoded 76px boundary.
 
 ## [1.1.0] - 2026-07-16
 

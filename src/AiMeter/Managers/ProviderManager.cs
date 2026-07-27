@@ -90,25 +90,60 @@ public partial class ProviderManager : ObservableObject, IProviderManager
         SyncMetrics(SelectedMetrics());
     }
 
+    public static bool IsPlaceholderMetric(string name)
+    {
+        return name.Contains("Error", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Required", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Expired", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("No Workspace", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("No Usage Data", StringComparison.OrdinalIgnoreCase);
+    }
+
     private List<UsageMetric> SelectedMetrics()
     {
         var config = _settingsManager.Current;
         var all = _lastGoodByProvider.Values.SelectMany(m => m).ToList();
-        return config.SelectedMetrics.Count == 0
-            ? all
-            : all.Where(m => config.SelectedMetrics.Contains(m.Name)).ToList();
+        var realMetrics = all.Where(m => !IsPlaceholderMetric(m.Name)).ToList();
+
+        config.SelectedMetrics.RemoveAll(IsPlaceholderMetric);
+
+        var source = realMetrics.Count > 0 ? realMetrics : all;
+
+        if (config.SelectedMetrics.Count == 0)
+        {
+            return source;
+        }
+
+        var filtered = source.Where(m => config.SelectedMetrics.Contains(m.Name)).ToList();
+        return filtered.Count > 0 ? filtered : source;
     }
 
     private void TrackKnownMetricNames()
     {
         var all = _lastGoodByProvider.Values.SelectMany(m => m).ToList();
+        var config = _settingsManager.Current;
 
-        // Track every discovered name (unfiltered) so settings can list metrics the
-        // user has deselected and still let them re-enable those.
-        foreach (var metric in all)
+        for (var i = KnownMetricNames.Count - 1; i >= 0; i--)
+        {
+            if (IsPlaceholderMetric(KnownMetricNames[i]))
+            {
+                KnownMetricNames.RemoveAt(i);
+            }
+        }
+        config.SelectedMetrics.RemoveAll(IsPlaceholderMetric);
+
+        var wasEmpty = config.SelectedMetrics.Count == 0;
+
+        foreach (var metric in all.Where(m => !IsPlaceholderMetric(m.Name)))
         {
             if (!KnownMetricNames.Contains(metric.Name))
+            {
                 KnownMetricNames.Add(metric.Name);
+                if (wasEmpty && !config.SelectedMetrics.Contains(metric.Name))
+                {
+                    config.SelectedMetrics.Add(metric.Name);
+                }
+            }
         }
     }
 

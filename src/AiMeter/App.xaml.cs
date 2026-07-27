@@ -75,7 +75,16 @@ public partial class App : Application
                 _notifyIcon.Icon = new System.Drawing.Icon(iconStream.Stream);
             }
             _notifyIcon.DataContext = _host.Services.GetRequiredService<TrayViewModel>();
-            _notifyIcon.ForceCreate();
+            _notifyIcon.Visibility = Visibility.Visible;
+            try
+            {
+                _notifyIcon.ForceCreate();
+            }
+            catch
+            {
+                await Task.Delay(500);
+                try { _notifyIcon.ForceCreate(); } catch { }
+            }
         }
 
         providerManager.AlertRaised += (s, alert) =>

@@ -30,6 +30,38 @@ public class ClaudeApiClient : IClaudeApiClient, IDisposable
     {
         await EnsureInitializedAsync();
 
+        var currentSource = _webView?.Source?.ToString().ToLowerInvariant() ?? string.Empty;
+        if (currentSource.Contains("/login"))
+        {
+            await RefreshNavigationAsync();
+        }
+
+        var (status, body) = await ExecuteFetchAsync(path);
+        if (status is 401 or 403 or 0)
+        {
+            await RefreshNavigationAsync();
+            (status, body) = await ExecuteFetchAsync(path);
+        }
+
+        return (status, body);
+    }
+
+    private async Task RefreshNavigationAsync()
+    {
+        if (_webView is null) return;
+        var navigationComplete = new TaskCompletionSource();
+        void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            _webView.NavigationCompleted -= OnNavigationCompleted;
+            navigationComplete.TrySetResult();
+        }
+        _webView.NavigationCompleted += OnNavigationCompleted;
+        _webView.CoreWebView2.Navigate("https://claude.ai");
+        await Task.WhenAny(navigationComplete.Task, Task.Delay(10000));
+    }
+
+    private async Task<(int StatusCode, string? Body)> ExecuteFetchAsync(string path)
+    {
         var requestId = Guid.NewGuid().ToString("N");
         var tcs = new TaskCompletionSource<string>();
         _pending[requestId] = tcs;
@@ -62,41 +94,76 @@ public class ClaudeApiClient : IClaudeApiClient, IDisposable
         return (status, body);
     }
 
-    private Task EnsureInitializedAsync() => _initTask ??= InitializeAsync();
+    private async Task EnsureInitializedAsync()
+    {
+        if (_initTask is { IsFaulted: true } or { IsCanceled: true })
+            _initTask = null;
+        _initTask ??= InitializeAsync();
+        await _initTask;
+    }
+
+    private static readonly System.Threading.SemaphoreSlim WebViewInitLock = new(1, 1);
 
     private async Task InitializeAsync()
     {
-        _hostWindow = new Window
+        try
         {
-            Width = 1,
-            Height = 1,
-            WindowStyle = WindowStyle.None,
-            ShowInTaskbar = false,
-            Left = -32000,
-            Top = -32000,
-        };
-        _webView = new WebView2();
-        _hostWindow.Content = _webView;
-        _hostWindow.Show();
+            _hostWindow = new Window
+            {
+                Width = 1,
+                Height = 1,
+                WindowStyle = WindowStyle.None,
+                ShowInTaskbar = false,
+                Left = -32000,
+                Top = -32000,
+            };
+            _webView = new WebView2();
+            _hostWindow.Content = _webView;
+            _hostWindow.Show();
 
-        var userDataFolder = System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "AiMeter", "WebView2");
+            var userDataFolder = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "AiMeter", "WebView2");
 
-        var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-        await _webView.EnsureCoreWebView2Async(env);
+            await WebViewInitLock.WaitAsync();
+            try
+            {
+                var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+                for (int attempt = 1; attempt <= 5; attempt++)
+                {
+                    try
+                    {
+                        await _webView.EnsureCoreWebView2Async(env);
+                        break;
+                    }
+                    catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x800700AA) && attempt < 5)
+                    {
+                        await Task.Delay(500 * attempt);
+                    }
+                }
+            }
+            finally
+            {
+                WebViewInitLock.Release();
+            }
 
-        _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+            _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
 
-        var navigationComplete = new TaskCompletionSource();
-        void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
-        {
-            _webView.NavigationCompleted -= OnNavigationCompleted;
-            navigationComplete.TrySetResult();
+            var navigationComplete = new TaskCompletionSource();
+            void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+            {
+                _webView.NavigationCompleted -= OnNavigationCompleted;
+                navigationComplete.TrySetResult();
+            }
+            _webView.NavigationCompleted += OnNavigationCompleted;
+            _webView.CoreWebView2.Navigate("https://claude.ai");
+            await navigationComplete.Task;
         }
-        _webView.NavigationCompleted += OnNavigationCompleted;
-        _webView.CoreWebView2.Navigate("https://claude.ai");
-        await navigationComplete.Task;
+        catch
+        {
+            _initTask = null;
+            throw;
+        }
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)

@@ -110,6 +110,21 @@ public partial class SettingsViewModel : ObservableObject
     /// </summary>
     public void ResyncMetricSelections()
     {
+        // Add any newly-discovered metrics that aren't yet in the options list.
+        foreach (var name in _providerManager.KnownMetricNames)
+        {
+            AddMetricOption(name);
+        }
+
+        // Remove any placeholder metrics that may have leaked into the options.
+        for (var i = MetricOptions.Count - 1; i >= 0; i--)
+        {
+            if (ProviderManager.IsPlaceholderMetric(MetricOptions[i].Name))
+            {
+                MetricOptions.RemoveAt(i);
+            }
+        }
+
         foreach (var option in MetricOptions)
         {
             option.IsSelected = Config.SelectedMetrics.Count == 0 || Config.SelectedMetrics.Contains(option.Name);

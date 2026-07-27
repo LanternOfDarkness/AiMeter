@@ -29,6 +29,10 @@ public partial class WidgetViewModel : ObservableObject
     /// </summary>
     public bool IsEmptyState => HasFetchedOnce && !Config.HasClaudeSession && !Config.HasOpenCodeSession;
 
+    public bool ShowSkeleton => !HasFetchedOnce || (Metrics.Count == 0 && !IsEmptyState);
+
+    public bool ShowRealContent => HasFetchedOnce && (Metrics.Count > 0 || IsEmptyState);
+
     /// <summary>
     /// Fixed pixel height of a single Compact bar row, derived from the configured font size so
     /// the multi-column wrap math is exact. The row template pins its root to this height (no
@@ -54,6 +58,12 @@ public partial class WidgetViewModel : ObservableObject
         _settingsManager = settingsManager;
         _settingsWindow = settingsWindow;
 
+        _providerManager.Metrics.CollectionChanged += (s, e) =>
+        {
+            OnPropertyChanged(nameof(ShowSkeleton));
+            OnPropertyChanged(nameof(ShowRealContent));
+        };
+
         // Relay HasFetchedOnce changes from the manager so the widget's skeleton/real
         // toggle updates via binding (the manager owns the source of truth).
         _providerManager.PropertyChanged += (s, e) =>
@@ -62,6 +72,8 @@ public partial class WidgetViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(HasFetchedOnce));
                 OnPropertyChanged(nameof(IsEmptyState));
+                OnPropertyChanged(nameof(ShowSkeleton));
+                OnPropertyChanged(nameof(ShowRealContent));
             }
         };
 
@@ -72,6 +84,8 @@ public partial class WidgetViewModel : ObservableObject
             if (e.PropertyName is nameof(AppConfig.HasClaudeSession) or nameof(AppConfig.HasOpenCodeSession))
             {
                 OnPropertyChanged(nameof(IsEmptyState));
+                OnPropertyChanged(nameof(ShowSkeleton));
+                OnPropertyChanged(nameof(ShowRealContent));
             }
 
             // The Compact column layout is computed from these two settings; relay so the

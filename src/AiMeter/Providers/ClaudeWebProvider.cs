@@ -61,6 +61,7 @@ public class ClaudeWebProvider : IProvider
                 return metrics;
             }
 
+            _logger.LogInformation("Claude usage response length: {Length}, body: {Body}", usageBody.Length, usageBody);
             metrics.AddRange(ParseUsage(usageBody));
         }
         catch (Exception ex)
@@ -81,34 +82,156 @@ public class ClaudeWebProvider : IProvider
     private static IEnumerable<UsageMetric> ParseUsage(string json)
     {
         using var doc = JsonDocument.Parse(json);
-        if (!doc.RootElement.TryGetProperty("limits", out var limits) || limits.ValueKind != JsonValueKind.Array)
-        {
-            yield break;
-        }
+        var yieldedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var limit in limits.EnumerateArray())
+        if (doc.RootElement.TryGetProperty("limits", out var limits) && limits.ValueKind == JsonValueKind.Array)
         {
-            var kind = limit.TryGetProperty("kind", out var kindProp) ? kindProp.GetString() : null;
-            var percentUsed = limit.TryGetProperty("percent", out var percentProp) ? percentProp.GetDouble() : 0;
-            DateTime? resetsAt = limit.TryGetProperty("resets_at", out var resetsProp) && resetsProp.ValueKind == JsonValueKind.String
-                ? resetsProp.GetDateTimeOffset().ToLocalTime().DateTime
-                : null;
-
-            yield return new UsageMetric
+            foreach (var limit in limits.EnumerateArray())
             {
-                Name = NameForLimit(kind, limit),
-                TotalQuota = 100,
-                RemainingQuota = Math.Max(0, 100 - percentUsed),
-                ResetTime = resetsAt,
-                WindowDuration = WindowDurationForKind(kind)
-            };
+                var kind = limit.TryGetProperty("kind", out var kindProp) && kindProp.ValueKind == JsonValueKind.String
+                    ? kindProp.GetString()
+                    : null;
+                
+                double percentUsed = 0;
+                if (limit.TryGetProperty("percent", out var percentProp) && percentProp.ValueKind == JsonValueKind.Number)
+                {
+                    percentUsed = percentProp.GetDouble();
+                }
+
+                DateTime? resetsAt = limit.TryGetProperty("resets_at", out var resetsProp) && resetsProp.ValueKind == JsonValueKind.String
+                    ? resetsProp.GetDateTimeOffset().ToLocalTime().DateTime
+                    : null;
+
+                var name = NameForLimit(kind, limit);
+                yieldedNames.Add(name);
+
+                yield return new UsageMetric
+                {
+                    Name = name,
+                    TotalQuota = 100,
+                    RemainingQuota = Math.Max(0, 100 - percentUsed),
+                    ResetTime = resetsAt,
+                    WindowDuration = WindowDurationForKind(kind)
+                };
+            }
         }
+
+        if (!yieldedNames.Contains("Claude Extra Usage"))
+        {
+            double usedInDollars = 0;
+            double limitInDollars = 0;
+            double percentUsed = 0;
+            bool hasExtraUsageData = false;
+
+            if (doc.RootElement.TryGetProperty("extra_usage", out var extraUsage) && extraUsage.ValueKind == JsonValueKind.Object)
+            {
+                bool isEnabled = !extraUsage.TryGetProperty("is_enabled", out var enabledProp) || enabledProp.ValueKind != JsonValueKind.False;
+                if (isEnabled)
+                {
+                    hasExtraUsageData = true;
+                    double decPlaces = 2;
+                    if (TryGetDoubleVal(extraUsage, "decimal_places", out var dp) && dp >= 0) decPlaces = dp;
+                    double divisor = Math.Pow(10, decPlaces);
+
+                    if (TryGetDoubleVal(extraUsage, "used_credits", out var uc))
+                        usedInDollars = uc / divisor;
+                    else if (TryGetDoubleVal(extraUsage, "used", out var u))
+                        usedInDollars = u;
+                    else if (TryGetDoubleVal(extraUsage, "used_cents", out var uc2))
+                        usedInDollars = uc2 / 100.0;
+
+                    if (TryGetDoubleVal(extraUsage, "monthly_limit", out var ml))
+                        limitInDollars = ml;
+                    else if (TryGetDoubleVal(extraUsage, "limit", out var l))
+                        limitInDollars = l;
+                    else if (TryGetDoubleVal(extraUsage, "limit_cents", out var lc))
+                        limitInDollars = lc / 100.0;
+
+                    if (TryGetDoubleVal(extraUsage, "utilization", out var ut))
+                        percentUsed = ut;
+                    else if (TryGetDoubleVal(extraUsage, "percent", out var p))
+                        percentUsed = p;
+                }
+            }
+
+            if (doc.RootElement.TryGetProperty("spend", out var spend) && spend.ValueKind == JsonValueKind.Object)
+            {
+                hasExtraUsageData = true;
+                if (spend.TryGetProperty("used", out var spendUsed) && spendUsed.ValueKind == JsonValueKind.Object)
+                {
+                    double exp = 2;
+                    if (TryGetDoubleVal(spendUsed, "exponent", out var e) && e >= 0) exp = e;
+                    if (TryGetDoubleVal(spendUsed, "amount_minor", out var am))
+                        usedInDollars = am / Math.Pow(10, exp);
+                }
+
+                if (TryGetDoubleVal(spend, "limit", out var sl))
+                    limitInDollars = sl;
+
+                if (TryGetDoubleVal(spend, "percent", out var sp))
+                    percentUsed = sp;
+            }
+
+            if (hasExtraUsageData)
+            {
+                if (limitInDollars > 0)
+                {
+                    percentUsed = Math.Min(100.0, (usedInDollars / limitInDollars) * 100.0);
+                }
+
+                yield return new UsageMetric
+                {
+                    Name = "Claude Extra Usage",
+                    TotalQuota = 100,
+                    RemainingQuota = Math.Max(0, 100 - percentUsed),
+                    WindowDuration = TimeSpan.FromDays(30)
+                };
+            }
+        }
+
+        if (!yieldedNames.Contains("Claude Balance") && (doc.RootElement.TryGetProperty("balance", out var balObj) || doc.RootElement.TryGetProperty("account_balance", out balObj)) && balObj.ValueKind == JsonValueKind.Object)
+        {
+            if (TryGetDoubleVal(balObj, "amount", out var amt) || TryGetDoubleVal(balObj, "balance", out amt) || TryGetDoubleVal(balObj, "available", out amt))
+            {
+                double limit = 100;
+                if (TryGetDoubleVal(balObj, "limit", out var l) && l > 0) limit = l;
+                double percentRemaining = limit > 0 ? Math.Min(100.0, (amt / limit) * 100.0) : 100.0;
+
+                yield return new UsageMetric
+                {
+                    Name = "Claude Balance",
+                    TotalQuota = 100,
+                    RemainingQuota = Math.Max(0, percentRemaining),
+                    WindowDuration = TimeSpan.FromDays(30)
+                };
+            }
+        }
+    }
+
+    private static bool TryGetDoubleVal(JsonElement element, string propertyName, out double value)
+    {
+        value = 0;
+        if (element.TryGetProperty(propertyName, out var prop))
+        {
+            if (prop.ValueKind == JsonValueKind.Number)
+            {
+                value = prop.GetDouble();
+                return true;
+            }
+            if (prop.ValueKind == JsonValueKind.String && double.TryParse(prop.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+            {
+                value = parsed;
+                return true;
+            }
+        }
+        return false;
     }
 
     private static TimeSpan? WindowDurationForKind(string? kind) => kind switch
     {
         "session" => TimeSpan.FromHours(5),
         "weekly_all" or "weekly_scoped" => TimeSpan.FromDays(7),
+        "extra_usage" or "extra_usage_dollars" or "monthly_spend" or "balance" => TimeSpan.FromDays(30),
         _ => null
     };
 
@@ -117,6 +240,8 @@ public class ClaudeWebProvider : IProvider
         "session" => "Claude Session",
         "weekly_all" => "Claude Weekly",
         "weekly_scoped" => ScopedModelName(limit) is { } model ? $"Claude Weekly ({model})" : "Claude Weekly (Scoped)",
+        "extra_usage" or "extra_usage_dollars" or "monthly_spend" => "Claude Extra Usage",
+        "balance" or "credit_balance" or "current_balance" => "Claude Balance",
         null => "Claude",
         _ => $"Claude {kind}"
     };
