@@ -2,7 +2,7 @@
 
 All notable changes to AiMeter are documented in this file.
 
-## [Unreleased]
+## [1.2.1] - 2026-09-25
 
 ### Added
 - **Account status notes** — the OpenCode row in Settings ▸ Accounts now says why no bars

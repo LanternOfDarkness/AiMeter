@@ -14,8 +14,8 @@ architecture designed for OpenAI, Gemini, Grok, OpenRouter, DeepSeek, and others
 
 ## Download
 
-**Latest release: v1.2.0** —
-[AiMeter-v1.2.0-win-x64.zip](https://github.com/LanternOfDarkness/AiMeter/releases/download/v1.2.0/AiMeter-v1.2.0-win-x64.zip)
+**Latest release: v1.2.1** —
+[AiMeter-v1.2.1-win-x64.zip](https://github.com/LanternOfDarkness/AiMeter/releases/download/v1.2.1/AiMeter-v1.2.1-win-x64.zip)
 
 ```
 SHA-256: 0FD4A314931DA1F476E49D65F771C73B0E1CE5C8732F4981F7F4DE2FC4A6EC1D
@@ -23,7 +23,7 @@ SHA-256: 0FD4A314931DA1F476E49D65F771C73B0E1CE5C8732F4981F7F4DE2FC4A6EC1D
 
 Framework-dependent build for **win-x64** — needs the .NET 9 Desktop Runtime and the WebView2
 Runtime (see [Requirements](#requirements)). Extract the zip and run `AiMeter.exe`.
-Verify the download with `Get-FileHash AiMeter-v1.2.0-win-x64.zip -Algorithm SHA256`.
+Verify the download with `Get-FileHash AiMeter-v1.2.1-win-x64.zip -Algorithm SHA256`.
 
 An Inno Setup installer (`installer/aimeter.iss`) is also available in this repo — see
 [Installation](#installation) to build and run it locally. It isn't code-signed, so Windows
