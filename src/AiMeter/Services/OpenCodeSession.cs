@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using AiMeter.Managers;
@@ -23,6 +24,19 @@ public class OpenCodeSession : IOpenCodeSession
 
     public bool HasSession => _settingsManager.Current.HasOpenCodeSession;
 
+    public int LoginGeneration { get; private set; }
+
+    public string? StatusNote { get; private set; }
+
+    public event EventHandler? StatusNoteChanged;
+
+    public void SetStatusNote(string? note)
+    {
+        if (note == StatusNote) return;
+        StatusNote = note;
+        StatusNoteChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public void Store(IEnumerable<(string Name, string Value)> cookies)
     {
         // opencode.ai uses an OAuth flow (opencode.ai/auth -> auth.opencode.ai -> callback),
@@ -32,11 +46,14 @@ public class OpenCodeSession : IOpenCodeSession
         // identifies the exact cookie name, tighten this to Any(c => c.Name == "<name>").
         _settingsManager.Current.HasOpenCodeSession = cookies.Any();
         _settingsManager.Save();
+        LoginGeneration++;
+        SetStatusNote(null);
     }
 
     public void Clear()
     {
         _settingsManager.Current.HasOpenCodeSession = false;
         _settingsManager.Save();
+        SetStatusNote(null);
     }
 }

@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
@@ -44,6 +47,126 @@ public class OpenCodeApiClient : IOpenCodeApiClient, IDisposable
         }
 
         return (status, body);
+    }
+
+    public async Task<CaptureResult> CaptureResponsesAsync(string pageUrl, IReadOnlyList<string> apiPaths)
+    {
+        await EnsureInitializedAsync();
+        var core = _webView!.CoreWebView2;
+        var responses = new List<CapturedResponse>();
+        var primaryAnswered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bouncedToLogin = false;
+
+        async void OnResponseReceived(object? sender, CoreWebView2WebResourceResponseReceivedEventArgs e)
+        {
+            if (e.Request.Method != "GET" || !Uri.TryCreate(e.Request.Uri, UriKind.Absolute, out var uri)) return;
+            var path = apiPaths.FirstOrDefault(p => uri.AbsolutePath.EndsWith(p, StringComparison.OrdinalIgnoreCase));
+            if (path is null) return;
+
+            var status = e.Response.StatusCode;
+            var orgId = e.Request.Headers.Contains("x-org-id") ? e.Request.Headers.GetHeader("x-org-id") : null;
+            string? body = null;
+            try
+            {
+                using var stream = await e.Response.GetContentAsync();
+                if (stream is not null)
+                {
+                    using var reader = new StreamReader(stream);
+                    body = await reader.ReadToEndAsync();
+                }
+            }
+            catch (Exception)
+            {
+                // Body unavailable (e.g. aborted request); keep the status.
+            }
+
+            responses.Add(new CapturedResponse(path, status, body, orgId));
+            if (path == apiPaths[0])
+            {
+                primaryAnswered.TrySetResult();
+            }
+        }
+
+        // The console is a SPA: an unauthenticated visit is redirected client-side to
+        // /console/login and the API calls never happen, so end early instead of timing out.
+        void OnSourceChanged(object? sender, CoreWebView2SourceChangedEventArgs e)
+        {
+            if (CurrentUrl.Contains("/console/login", StringComparison.OrdinalIgnoreCase))
+            {
+                bouncedToLogin = true;
+                primaryAnswered.TrySetResult();
+            }
+        }
+
+        core.WebResourceResponseReceived += OnResponseReceived;
+        core.SourceChanged += OnSourceChanged;
+        try
+        {
+            core.Navigate(pageUrl);
+            await Task.WhenAny(primaryAnswered.Task, Task.Delay(TimeSpan.FromSeconds(20)));
+            // Let the page's other queries (and any re-query once the org resolves) land too.
+            if (primaryAnswered.Task.IsCompleted && !bouncedToLogin)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+            }
+            return new CaptureResult(responses.ToList(), bouncedToLogin, CurrentUrl);
+        }
+        finally
+        {
+            core.WebResourceResponseReceived -= OnResponseReceived;
+            core.SourceChanged -= OnSourceChanged;
+        }
+    }
+
+    public async Task<(string FinalUrl, string? Html)> NavigateAndReadAsync(string url)
+    {
+        await EnsureInitializedAsync();
+        var core = _webView!.CoreWebView2;
+        var settled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Redirect chains (opencode.ai → auth.opencode.ai → back) fire several completions;
+        // only one that lands back on opencode.ai counts as settled.
+        void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            if (Uri.TryCreate(CurrentUrl, UriKind.Absolute, out var uri) && uri.Host is "opencode.ai" or "www.opencode.ai")
+            {
+                settled.TrySetResult(e.IsSuccess);
+            }
+        }
+
+        core.NavigationCompleted += OnNavigationCompleted;
+        try
+        {
+            core.Navigate(url);
+            var finished = await Task.WhenAny(settled.Task, Task.Delay(TimeSpan.FromSeconds(20)));
+            if (finished != settled.Task || !settled.Task.Result)
+            {
+                return (CurrentUrl, null);
+            }
+            var json = await core.ExecuteScriptAsync("document.documentElement.outerHTML");
+            return (CurrentUrl, JsonSerializer.Deserialize<string?>(json));
+        }
+        finally
+        {
+            core.NavigationCompleted -= OnNavigationCompleted;
+        }
+    }
+
+    public async Task<string?> GetLocalStorageAsync(string key)
+    {
+        await EnsureInitializedAsync();
+        var json = await _webView!.CoreWebView2.ExecuteScriptAsync(
+            $"window.localStorage.getItem({JsonSerializer.Serialize(key)})");
+        return JsonSerializer.Deserialize<string?>(json);
+    }
+
+    public async Task SetLocalStorageAsync(string key, string? value)
+    {
+        await EnsureInitializedAsync();
+        var script = value is null
+            ? $"window.localStorage.removeItem({JsonSerializer.Serialize(key)})"
+            : $"window.localStorage.setItem({JsonSerializer.Serialize(key)}, {JsonSerializer.Serialize(value)})";
+        await _webView!.CoreWebView2.ExecuteScriptAsync(script);
     }
 
     private async Task RefreshNavigationAsync()

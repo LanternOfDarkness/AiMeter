@@ -69,12 +69,16 @@ public partial class SettingsViewModel : ObservableObject
         _providerManager = providerManager;
         _startupManager = startupManager;
 
+        // Fetch right away after a login/logout so the new provider's metrics show up (and
+        // appear in the Metrics tab) without waiting for the next poll tick.
+        void RefreshNow() => _ = _providerManager.RefreshAsync();
+
         Accounts.Add(new AccountRowViewModel(claudeSession,
             () => serviceProvider.GetRequiredService<AuthWindow>(),
-            "Requires logging into Claude.ai to fetch web limits."));
+            "Requires logging into Claude.ai to fetch web limits.", RefreshNow));
         Accounts.Add(new AccountRowViewModel(openCodeSession,
             () => serviceProvider.GetRequiredService<OpenCodeAuthWindow>(),
-            "Requires logging into opencode.ai to fetch usage."));
+            "Requires logging into opencode.ai to fetch usage.", RefreshNow));
 
         foreach (var name in _providerManager.KnownMetricNames)
         {

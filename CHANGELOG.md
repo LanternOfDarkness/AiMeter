@@ -2,6 +2,29 @@
 
 All notable changes to AiMeter are documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Account status notes** — the OpenCode row in Settings ▸ Accounts now says why no bars
+  appear, e.g. "Logged In · No active Go subscription" (orange), or "Usage unavailable (see
+  log)", instead of a plain green "Logged In" with nothing on the widget.
+
+### Fixed
+- **OpenCode usage stopped loading** — opencode.ai moved its dashboard to the new OpenCode
+  Console, and `/go` became a public marketing page, so the provider never found a workspace
+  and reported nothing. Usage is now read from the console's own `/api/go/status` response
+  (captured from the logged-in page, so the site applies its own auth), with a fallback to the
+  old per-workspace page for plans that only exist there. If the console's selected org has
+  no plan, the user's other orgs are checked and the one with the plan is kept selected.
+- **OpenCode login reported success without logging in** — the login window accepted any
+  cookie as proof. It now logs into the Console first (success only once a console page past
+  the login screen is reached), then the original opencode.ai sign-in for the legacy page.
+- **Metrics from a provider logged into later stayed hidden** — once the first poll filled the
+  metric selection (e.g. with Claude's metrics), a newly logged-in provider's metrics were
+  left unchecked, off the widget. Metrics seen for the first time are now selected once;
+  ones you've unchecked stay unchecked. Existing settings keep their choices per provider.
+- **Login/logout now refreshes immediately** instead of waiting up to a full polling interval.
+
 ## [1.2.0] - 2026-07-27
 
 ### Added

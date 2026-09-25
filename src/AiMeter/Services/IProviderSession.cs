@@ -16,4 +16,13 @@ public interface IProviderSession
 
     /// <summary>Forgets the stored session marker (logout / invalidation on 401/403).</summary>
     void Clear();
+
+    /// <summary>
+    /// Latest info from the provider about this logged-in account that the widget can't show
+    /// as a bar (e.g. "No active Go subscription"); null while usage loads normally.
+    /// </summary>
+    string? StatusNote => null;
+
+    /// <summary>Raised when <see cref="StatusNote"/> changes.</summary>
+    event System.EventHandler? StatusNoteChanged { add { } remove { } }
 }

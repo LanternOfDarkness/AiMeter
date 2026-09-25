@@ -83,6 +83,14 @@ public partial class AppConfig : ObservableObject
     [ObservableProperty]
     private List<string> _selectedMetrics = new();
 
+    /// <summary>
+    /// Every real metric name ever reported, so a metric seen for the first time (e.g. right
+    /// after logging into a new provider) is auto-selected once, while one the user has since
+    /// unchecked stays unchecked. Null = settings file predates this field.
+    /// </summary>
+    [ObservableProperty]
+    private List<string>? _seenMetrics;
+
     // Serialized under a new JSON name ("LayoutMode", not "WidgetLayoutMode") deliberately:
     // the old enum stored Detailed=0/Compact=1 as a bare number, and the new enum reuses
     // value 1 for Taskbar. Keeping the old property name would silently reinterpret a

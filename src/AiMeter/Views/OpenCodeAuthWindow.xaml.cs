@@ -10,14 +10,23 @@ namespace AiMeter.Views;
 
 /// <summary>
 /// Drives the opencode.ai login in an embedded browser, mirroring <see cref="AuthWindow"/>.
-/// opencode.ai/auth uses an OAuth round trip (opencode.ai → auth.opencode.ai → callback), so
-/// login is detected when the browser leaves the main site for the auth provider and then
-/// returns to opencode.ai with cookies set.
+/// opencode.ai currently has two independent logins, and usage needs both:
+///   1) the OpenCode Console (opencode.ai/console/login) — reports Go status and the user's
+///      workspace id. Done once the browser reaches a /console page other than the login
+///      screen (the SPA only lets an authenticated user get there).
+///   2) the original site (opencode.ai/auth → auth.opencode.ai → /auth/callback) — its
+///      per-workspace page still holds usage for Go plans the console doesn't show. Done once
+///      the browser returns to opencode.ai from the auth server.
+/// The session is stored after step 1, so closing the window during step 2 still leaves the
+/// console usable.
 /// </summary>
 public partial class OpenCodeAuthWindow : Window
 {
+    private enum Step { Console, Legacy, Done }
+
     private readonly IOpenCodeSession _session;
-    private bool _sawAuthProvider;
+    private Step _step = Step.Console;
+    private bool _sawLegacyAuthServer;
 
     public OpenCodeAuthWindow(IOpenCodeSession session)
     {
@@ -37,7 +46,7 @@ public partial class OpenCodeAuthWindow : Window
         await webView.EnsureCoreWebView2Async(env);
 
         webView.CoreWebView2.SourceChanged += CoreWebView2_SourceChanged;
-        webView.Source = new Uri("https://opencode.ai/auth");
+        webView.Source = new Uri("https://opencode.ai/console/login?next=%2Fconsole%2Fgo");
     }
 
     private async void CoreWebView2_SourceChanged(object? sender, CoreWebView2SourceChangedEventArgs e)
@@ -45,28 +54,36 @@ public partial class OpenCodeAuthWindow : Window
         var uri = new Uri(webView.Source.ToString());
         var host = uri.Host.ToLowerInvariant();
         var path = uri.AbsolutePath.ToLowerInvariant();
-
         var onMainSite = host is "opencode.ai" or "www.opencode.ai";
 
-        // Any other host (auth.opencode.ai or a downstream IdP) means we're mid-login.
-        if (!onMainSite)
+        switch (_step)
         {
-            _sawAuthProvider = true;
-            return;
-        }
+            case Step.Console:
+                // Other hosts (a downstream IdP) mean we're mid-login.
+                if (!onMainSite || !path.StartsWith("/console") || path.StartsWith("/console/login")) return;
 
-        // Back on the main site after visiting the auth provider (or already past the initial
-        // /auth landing) — the OAuth round trip is complete once cookies are set.
-        var pastAuthLanding = _sawAuthProvider || !path.StartsWith("/auth");
-        if (!pastAuthLanding) return;
+                var cookies = await webView.CoreWebView2.CookieManager.GetCookiesAsync("https://opencode.ai");
+                if (cookies.Count == 0 || _step != Step.Console) return;
 
-        var cookies = await webView.CoreWebView2.CookieManager.GetCookiesAsync("https://opencode.ai");
-        if (cookies.Count > 0)
-        {
-            _session.Store(cookies.Select(c => (c.Name, c.Value)));
+                _session.Store(cookies.Select(c => (c.Name, c.Value)));
+                _step = Step.Legacy;
+                Title = "Log into OpenCode (step 2 of 2: opencode.ai workspace)";
+                webView.CoreWebView2.Navigate("https://opencode.ai/auth");
+                break;
 
-            MessageBox.Show("Successfully logged into OpenCode!", "AiMeter", MessageBoxButton.OK, MessageBoxImage.Information);
-            this.Close();
+            case Step.Legacy:
+                if (!onMainSite)
+                {
+                    _sawLegacyAuthServer = true;
+                    return;
+                }
+                // Back on the main site from the auth server, past the /auth hand-off.
+                if (!_sawLegacyAuthServer || path.StartsWith("/auth")) return;
+
+                _step = Step.Done;
+                MessageBox.Show("Successfully logged into OpenCode!", "AiMeter", MessageBoxButton.OK, MessageBoxImage.Information);
+                Close();
+                break;
         }
     }
 }

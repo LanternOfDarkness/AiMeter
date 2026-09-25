@@ -96,6 +96,7 @@ public partial class ProviderManager : ObservableObject, IProviderManager
             || name.Contains("Required", StringComparison.OrdinalIgnoreCase)
             || name.Contains("Expired", StringComparison.OrdinalIgnoreCase)
             || name.Contains("No Workspace", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("No Subscription", StringComparison.OrdinalIgnoreCase)
             || name.Contains("No Usage Data", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -120,7 +121,6 @@ public partial class ProviderManager : ObservableObject, IProviderManager
 
     private void TrackKnownMetricNames()
     {
-        var all = _lastGoodByProvider.Values.SelectMany(m => m).ToList();
         var config = _settingsManager.Current;
 
         for (var i = KnownMetricNames.Count - 1; i >= 0; i--)
@@ -132,14 +132,30 @@ public partial class ProviderManager : ObservableObject, IProviderManager
         }
         config.SelectedMetrics.RemoveAll(IsPlaceholderMetric);
 
-        var wasEmpty = config.SelectedMetrics.Count == 0;
+        // Settings from before SeenMetrics existed: providers the user already picked metrics
+        // from keep those choices; any provider with nothing selected (e.g. one logged into
+        // after the first run filled SelectedMetrics) gets its metrics auto-selected.
+        var migrating = config.SeenMetrics is null;
+        var seen = config.SeenMetrics ??= new List<string>();
 
-        foreach (var metric in all.Where(m => !IsPlaceholderMetric(m.Name)))
+        foreach (var providerMetrics in _lastGoodByProvider.Values)
         {
-            if (!KnownMetricNames.Contains(metric.Name))
+            var real = providerMetrics.Where(m => !IsPlaceholderMetric(m.Name)).ToList();
+            var keepChoices = migrating && real.Any(m => config.SelectedMetrics.Contains(m.Name));
+
+            foreach (var metric in real)
             {
-                KnownMetricNames.Add(metric.Name);
-                if (wasEmpty && !config.SelectedMetrics.Contains(metric.Name))
+                if (!KnownMetricNames.Contains(metric.Name))
+                {
+                    KnownMetricNames.Add(metric.Name);
+                }
+
+                if (seen.Contains(metric.Name)) continue;
+                seen.Add(metric.Name);
+
+                // First sighting: show it. Without this, once SelectedMetrics is non-empty a
+                // newly logged-in provider's metrics would stay hidden and unchecked.
+                if (!keepChoices && !config.SelectedMetrics.Contains(metric.Name))
                 {
                     config.SelectedMetrics.Add(metric.Name);
                 }
