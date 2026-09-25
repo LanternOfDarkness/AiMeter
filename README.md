@@ -18,7 +18,7 @@ architecture designed for OpenAI, Gemini, Grok, OpenRouter, DeepSeek, and others
 [AiMeter-v1.2.1-win-x64.zip](https://github.com/LanternOfDarkness/AiMeter/releases/download/v1.2.1/AiMeter-v1.2.1-win-x64.zip)
 
 ```
-SHA-256: 0FD4A314931DA1F476E49D65F771C73B0E1CE5C8732F4981F7F4DE2FC4A6EC1D
+SHA-256: 89AE748D06F984E5A0414D28558E6A69DEF8F6FF82BAD8A52353316DFFE7DD55
 ```
 
 Framework-dependent build for **win-x64** — needs the .NET 9 Desktop Runtime and the WebView2
