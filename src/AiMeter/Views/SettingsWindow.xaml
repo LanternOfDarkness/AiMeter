@@ -19,6 +19,7 @@
             </ResourceDictionary.MergedDictionaries>
             <converters:EnumToBooleanConverter x:Key="EnumToBooleanConverter" />
             <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
+            <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
         </ResourceDictionary>
     </Window.Resources>
 
@@ -85,9 +86,14 @@
                                 <StackPanel Orientation="Horizontal">
                                     <RadioButton Content="Compact (bars)" Margin="0,0,14,0"
                                                  IsChecked="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Compact}}" />
-                                    <RadioButton Content="Taskbar (docked)"
+                                    <RadioButton Content="Taskbar (docked)" Margin="0,0,14,0"
                                                  IsChecked="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Taskbar}}" />
+                                    <RadioButton Content="Deskband (in taskbar)"
+                                                 IsEnabled="{Binding IsDeskbandSupported}"
+                                                 IsChecked="{Binding Config.WidgetLayoutMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:WidgetLayoutMode.Deskband}}" />
                                 </StackPanel>
+                                <TextBlock Text="Deskband mode requires Windows 11 24H2 (build 26100) or later." Style="{StaticResource HintText}"
+                                           Visibility="{Binding IsDeskbandSupported, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
                             </StackPanel>
                         </Border>
 
@@ -190,6 +196,20 @@
                                 <CheckBox Content="Show over fullscreen apps" IsChecked="{Binding Config.ShowOverFullscreen}" />
                                 <TextBlock Text="Keeps the widget on top of borderless-fullscreen games. True exclusive-fullscreen apps can't be overlaid by any window."
                                            Style="{StaticResource HintText}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Text="COLORS" Style="{StaticResource SectionHeader}" />
+                                <TextBlock Text="How the uncustomized metric bars are colored." Style="{StaticResource HintText}" Margin="0,0,0,10" />
+                                <RadioButton Content="Threshold — green / yellow / red (current)" Margin="0,0,0,6"
+                                             IsChecked="{Binding Config.BarColorMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:BarColorMode.Threshold}}" />
+                                <RadioButton Content="Progressive — smooth color by remaining %" Margin="0,0,0,6"
+                                             IsChecked="{Binding Config.BarColorMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:BarColorMode.Progressive}}" />
+                                <RadioButton Content="Pace — color by remaining quota vs. time to reset" Margin="0,0,0,6"
+                                             IsChecked="{Binding Config.BarColorMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:BarColorMode.Pace}}" />
+                                <TextBlock Text="Per-metric custom colors (Metrics tab) still override the selected mode." Style="{StaticResource HintText}" />
                             </StackPanel>
                         </Border>
 

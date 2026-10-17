@@ -32,6 +32,7 @@ public partial class App : Application
                 services.AddSingleton<IClaudeApiClient, ClaudeApiClient>();
                 services.AddSingleton<IOpenCodeSession, OpenCodeSession>();
                 services.AddSingleton<IOpenCodeApiClient, OpenCodeApiClient>();
+                services.AddSingleton<WidgetHostManager>();
 
                 // Register Providers
                 services.AddTransient<IProvider, ClaudeWebProvider>();
@@ -59,8 +60,9 @@ public partial class App : Application
         var providerManager = _host.Services.GetRequiredService<IProviderManager>();
         await providerManager.StartAsync();
 
-        // Show widget by default
-        _host.Services.GetRequiredService<Views.WidgetWindow>().Show();
+        // Apply the persisted layout mode: shows the floating widget, or attaches the
+        // deskband host when the saved mode is Deskband.
+        _host.Services.GetRequiredService<WidgetHostManager>().Initialize();
 
         base.OnStartup(e);
 
@@ -96,6 +98,8 @@ public partial class App : Application
     protected override async void OnExit(ExitEventArgs e)
     {
         _notifyIcon?.Dispose();
+
+        _host!.Services.GetService<WidgetHostManager>()?.Dispose();
 
         (_host!.Services.GetService<IClaudeApiClient>() as IDisposable)?.Dispose();
         (_host!.Services.GetService<IOpenCodeApiClient>() as IDisposable)?.Dispose();

@@ -22,6 +22,12 @@ public partial class SettingsViewModel : ObservableObject
 
     public AppConfig Config => _settingsManager.Current;
 
+    /// <summary>
+    /// Whether Deskband mode can be offered on this machine (Windows 11 24H2+). Drives the
+    /// enable/disable state of the third layout radio in Settings.
+    /// </summary>
+    public bool IsDeskbandSupported => Config.IsDeskbandSupported;
+
     public ObservableCollection<MetricOption> MetricOptions { get; } = new();
 
     /// <summary>One login/logout row per usage provider (Claude, OpenCode, …).</summary>

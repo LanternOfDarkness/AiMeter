@@ -1,7 +1,7 @@
 ; AiMeter installer (Inno Setup 6+).
 ;
 ; Build flow:
-;   dotnet publish -c Release -r win-x64 --self-contained false -o publish\win-x64
+;   dotnet publish src/AiMeter/AiMeter.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish\win-x64
 ;   iscc installer\aimeter.iss
 ; produces installer\Output\AiMeter-setup-x64.exe
 ;
@@ -57,7 +57,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 [Run]
 ; Best-effort prerequisite installs: skipped entirely if already present, and a failed
 ; download just shows a message rather than blocking the rest of setup.
-Filename: "{tmp}\windowsdesktop-runtime-9-installer.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing .NET 9 Desktop Runtime..."; Check: NeedsDotNetRuntime; Flags: skipifdoesntexist waituntilterminated
+Filename: "{tmp}\windowsdesktop-runtime-10-installer.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing .NET 10 Desktop Runtime..."; Check: NeedsDotNetRuntime; Flags: skipifdoesntexist waituntilterminated
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Installing WebView2 Runtime..."; Check: NeedsWebView2; Flags: skipifdoesntexist waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
 
@@ -75,7 +75,7 @@ begin
   Result := Exec(Exe, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
-// Detects the .NET 9 Desktop Runtime via `dotnet --list-runtimes`, redirected to a temp
+// Detects the .NET 10 Desktop Runtime via `dotnet --list-runtimes`, redirected to a temp
 // file since Inno's Exec doesn't capture stdout directly.
 function IsDotNetDesktopRuntimeInstalled(): Boolean;
 var
@@ -95,7 +95,7 @@ begin
         Output.LoadFromFile(TmpFile);
         for I := 0 to Output.Count - 1 do
         begin
-          if Pos('Microsoft.WindowsDesktop.App 9.', Output[I]) > 0 then
+          if Pos('Microsoft.WindowsDesktop.App 10.', Output[I]) > 0 then
           begin
             Result := True;
             Break;
@@ -126,12 +126,12 @@ begin
   Result := False;
   if IsDotNetDesktopRuntimeInstalled() then Exit;
 
-  if DownloadWithPowerShell('https://aka.ms/dotnet/9.0/windowsdesktop-runtime-win-x64.exe',
-       ExpandConstant('{tmp}\windowsdesktop-runtime-9-installer.exe')) then
+  if DownloadWithPowerShell('https://aka.ms/dotnet/10.0/windowsdesktop-runtime-win-x64.exe',
+       ExpandConstant('{tmp}\windowsdesktop-runtime-10-installer.exe')) then
     Result := True
   else
-    MsgBox('Could not download the .NET 9 Desktop Runtime automatically. Please install it ' +
-      'manually from https://dotnet.microsoft.com/download/dotnet/9.0 after Setup finishes.',
+    MsgBox('Could not download the .NET 10 Desktop Runtime automatically. Please install it ' +
+      'manually from https://dotnet.microsoft.com/download/dotnet/10.0 after Setup finishes.',
       mbInformation, MB_OK);
 end;
 

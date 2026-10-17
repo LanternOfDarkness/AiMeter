@@ -65,6 +65,14 @@ public partial class AppConfig : ObservableObject
     [ObservableProperty]
     private Dictionary<string, string> _metricColors = new();
 
+    /// <summary>
+    /// How plain metric bars are colored: the fixed quota thresholds (default), a smooth
+    /// remaining-percentage gradient, or remaining quota compared against time-to-reset.
+    /// Per-metric overrides in <see cref="MetricColors"/> still win in every mode.
+    /// </summary>
+    [ObservableProperty]
+    private BarColorMode _barColorMode = BarColorMode.Threshold;
+
     [ObservableProperty]
     private double? _widgetLeft;
 
@@ -99,6 +107,14 @@ public partial class AppConfig : ObservableObject
     [ObservableProperty]
     [property: JsonPropertyName("LayoutMode")]
     private WidgetLayoutMode _widgetLayoutMode = WidgetLayoutMode.Compact;
+
+    /// <summary>
+    /// True on Windows 11 24H2 (build 26100)+, where Deskband11Lib can host content in the
+    /// taskbar. Not serialized - it's a runtime capability probe, not a user setting.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsDeskbandSupported =>
+        OperatingSystem.IsWindows() && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 26100);
 
     [ObservableProperty]
     private bool _showOverFullscreen = true;

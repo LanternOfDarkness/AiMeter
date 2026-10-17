@@ -2,6 +2,38 @@
 
 All notable changes to AiMeter are documented in this file.
 
+## [2.0.0] - 2026-10-18
+
+### Added
+- **Deskband mode** — a third layout that embeds the widget *inside* the Windows 11 taskbar
+  (a real taskbar-resident child window, via `Deskband11Lib.Wpf`), alongside Compact and
+  Taskbar. It renders the Compact look — label, colored bar, % and reset — with **two rows per
+  column**, wrapping into extra columns to the right, and stays clear of the Start button, app
+  buttons and the notification area. Switch with the widget's *Switch Layout* command
+  (Compact → Taskbar → Deskband) or in Settings ▸ Widget ▸ Layout. Requires Windows 11 24H2
+  (build 26100) or later; the option is disabled with a hint on older systems. Explorer
+  restarts, DPI changes and monitor disconnects are recovered automatically.
+- **Progressive and Pace bar coloring** (Settings ▸ General ▸ Colors) — replaces the fixed
+  green/yellow/red thresholds for uncustomized bars:
+  - **Progressive** — a smooth color gradient from remaining percentage (dark red → red →
+    orange → yellow → blue → green).
+  - **Pace** — color by remaining *quota* versus remaining *time* to reset: green while usage
+    is behind the clock, blue on pace, red once it is running ahead.
+  - **Threshold** stays the default (unchanged look), and per-metric custom colors still
+    override all three modes.
+- Optional self-contained installer variant (`installer/aimeter-full.iss`).
+
+### Changed
+- **Now targets .NET 10** (`net10.0-windows10.0.26100.0`, Windows 11 24H2+). The installer
+  prerequisite check moved from the .NET 9 to the .NET 10 Desktop Runtime.
+- **Releases ship as a single `AiMeter.exe`** — the framework-dependent single-file publish
+  bundles the WebView2 native loader (auto-extracted on first run), so there are no loose
+  dependency files to keep beside the app. The self-contained single exe is available as an
+  optional build.
+
+### Removed
+- **Windows 10 support** — Windows 11 24H2 (build 26100) or later is now required.
+
 ## [1.2.1] - 2026-09-25
 
 ### Added

@@ -14,16 +14,18 @@ architecture designed for OpenAI, Gemini, Grok, OpenRouter, DeepSeek, and others
 
 ## Download
 
-**Latest release: v1.2.1** —
-[AiMeter-v1.2.1-win-x64.zip](https://github.com/LanternOfDarkness/AiMeter/releases/download/v1.2.1/AiMeter-v1.2.1-win-x64.zip)
+**Latest release: v2.0.0** —
+[AiMeter.exe](https://github.com/LanternOfDarkness/AiMeter/releases/download/v2.0.0/AiMeter.exe)
+(30.0 MiB)
 
 ```
-SHA-256: 89AE748D06F984E5A0414D28558E6A69DEF8F6FF82BAD8A52353316DFFE7DD55
+SHA-256: 6B26B2A46C5EF3998C1CB88E70B6CAC7B34DE8483D30464797C83C91D8AA9D25
 ```
 
-Framework-dependent build for **win-x64** — needs the .NET 9 Desktop Runtime and the WebView2
-Runtime (see [Requirements](#requirements)). Extract the zip and run `AiMeter.exe`.
-Verify the download with `Get-FileHash AiMeter-v1.2.1-win-x64.zip -Algorithm SHA256`.
+A single framework-dependent `AiMeter.exe` for **win-x64** — no zip, no loose files. It needs
+the .NET 10 Desktop Runtime and the WebView2 Runtime (see [Requirements](#requirements)); just
+download it and run. Verify the download with
+`Get-FileHash AiMeter.exe -Algorithm SHA256`.
 
 An Inno Setup installer (`installer/aimeter.iss`) is also available in this repo — see
 [Installation](#installation) to build and run it locally. It isn't code-signed, so Windows
@@ -31,6 +33,17 @@ SmartScreen will warn on first run; a signed, hosted installer release is tracke
 follow-up (see [docs/design.md](docs/design.md)).
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
+## What's new in v2.0.0
+
+- **Deskband mode** — embed the widget *inside* the Windows 11 taskbar, showing the Compact
+  bars two rows per column. A third layout alongside Compact and Taskbar (Windows 11 24H2+).
+- **Progressive & Pace coloring** — color bars by a smooth remaining-% gradient, or by
+  remaining quota versus time-to-reset (green while behind the clock, red once running ahead).
+  The existing green/yellow/red Threshold stays the default.
+- **Single-exe release** — ships as one `AiMeter.exe`, with no loose dependency files.
+- **Now on .NET 10** — Windows 11 24H2 (build 26100) or later is required; Windows 10 is no
+  longer supported.
 
 ## Features
 
@@ -49,6 +62,13 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes.
     taskbar — one thin vertical-fill column per metric showing a 3-letter code, the quota
     fill, the remaining % and a compact reset countdown (`3.3h`, `5.2d`) all at rest; hover a
     column for the full name and verbose reset time.
+  - **Deskband** layout (Windows 11 24H2+): embeds the same Compact bars *inside* the taskbar —
+    two rows per column, wrapping into extra columns to the right — kept clear of the Start
+    button, app buttons and the notification area. Explorer restarts, DPI changes and monitor
+    disconnects are recovered automatically.
+- **Bar coloring modes** (Settings → General → Colors) — color uncustomized bars by the fixed
+  green/yellow/red **Thresholds** (default), a smooth **Progressive** remaining-% gradient, or
+  **Pace** (remaining quota versus time to reset). Per-metric custom colors still win.
 - **Log in required** — once the first poll completes, if no provider is logged in at all the
   widget shows a single "Log in required" call-to-action (instead of per-provider error
   tiles); click it to jump straight to Settings.
@@ -68,6 +88,8 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Quota color states
 
+With the default **Threshold** coloring mode:
+
 | Remaining | Color |
 |-----------|-------|
 | 75–100%   | Green |
@@ -77,16 +99,20 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes.
 | 0–10%     | Dark red |
 | Unknown   | Gray |
 
+Switch to **Progressive** for a smooth gradient by remaining %, or **Pace** to color by
+remaining quota versus time-to-reset (Settings → General → Colors). Per-metric custom colors
+override all modes.
+
 **Time bar** (Taskbar mode only): a thin sliver alongside each column's quota fill that fills
 as the reset approaches — empty right after a reset, full just before the next one.
 
 ## Getting started
 
 ### Requirements
-- Windows 10/11
-- [.NET 9 SDK](https://dotnet.microsoft.com/download)
+- Windows 11 24H2 (build 26100) or later
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) — preinstalled
-  on Windows 11 and current Windows 10; both providers log in and fetch through it.
+  on Windows 11; both providers log in and fetch through it.
 
 ### Build & run
 ```powershell
@@ -105,9 +131,24 @@ iscc installer/aimeter.iss
 This produces `installer/Output/AiMeter-setup-x64.exe`. Running it installs AiMeter to
 `%LocalAppData%\Programs\AiMeter` — per-user, no admin/UAC prompt — with optional "Launch at
 Windows startup" and desktop-shortcut checkboxes (both checked by default), and it checks
-for and silently installs the .NET 9 Desktop Runtime and WebView2 Runtime prerequisites if
+for and silently installs the .NET 10 Desktop Runtime and WebView2 Runtime prerequisites if
 they're missing. Uninstalling removes the app but leaves `%AppData%\AiMeter` (your settings
 and logs) untouched by default; you're asked once whether to remove those too.
+
+### Single-file build
+
+```powershell
+# Framework-dependent single exe (needs .NET 10 Desktop Runtime; default)
+dotnet publish src/AiMeter/AiMeter.csproj -c Release -r win-x64 --self-contained false `
+  -p:PublishSingleFile=true -o publish/win-x64
+
+# Self-contained single exe (~65 MB; no .NET prerequisite; still needs WebView2 Runtime)
+dotnet publish src/AiMeter/AiMeter.csproj -c Release -r win-x64 --self-contained true `
+  -p:PublishSingleFile=true -o publish/win-x64-full
+```
+
+The release ships as a single `AiMeter.exe` (see [Download](#download));
+`installer/aimeter-full.iss` builds the self-contained variant.
 
 On first run, open **Settings → Accounts** and log into Claude.ai and/or opencode.ai to
 fetch your usage limits — each provider has its own login row. Authentication runs in an
@@ -120,9 +161,9 @@ Settings are stored as JSON at:
 ```
 %AppData%\AiMeter\settings.json
 ```
-This includes widget opacity, layout mode, saved position, selected metrics, polling
-interval, and notification preferences. The embedded browser session lives alongside it in
-`%AppData%\AiMeter\WebView2`.
+This includes widget opacity, layout mode (Compact / Taskbar / Deskband), bar coloring mode,
+saved position, selected metrics, polling interval, and notification preferences. The embedded
+browser session lives alongside it in `%AppData%\AiMeter\WebView2`.
 
 Diagnostic logs are written daily to `%AppData%\AiMeter\logs\aimeter-{yyyy-MM-dd}.log` and
 capture provider fetch failures, session expiry, and settings load/save errors — useful when
@@ -130,7 +171,7 @@ metrics stop updating with no visible explanation.
 
 ## Architecture
 
-- **.NET 9 · WPF · MVVM** with `CommunityToolkit.Mvvm` and `Microsoft.Extensions.Hosting` DI.
+- **.NET 10 · WPF · MVVM** with `CommunityToolkit.Mvvm` and `Microsoft.Extensions.Hosting` DI.
 - `IProvider` implementations fetch usage; `ProviderManager` polls, caches last-good data,
   filters by selection, and raises quota alerts.
 - The widget and settings share a single live `AppConfig` singleton, persisted by

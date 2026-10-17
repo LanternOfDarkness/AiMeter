@@ -7,8 +7,11 @@
     <converters:PercentageToWidthConverter x:Key="PercentageToWidthConverter" />
     <converters:MetricLabelConverter x:Key="MetricLabelConverter" />
     <converters:TimeBarFractionConverter x:Key="TimeBarFractionConverter" />
-    <converters:MetricColorConverter x:Key="MetricColorConverter" />
+    <converters:MetricBarColorConverter x:Key="MetricBarColorConverter" />
     <converters:FontScaleConverter x:Key="FontScaleConverter" />
+    <converters:GapToMarginConverter x:Key="GapToMarginConverter" />
+    <converters:PercentageWidthMultiConverter x:Key="PercentageWidthMultiConverter" />
+    <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
     <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
     <!-- Dark-themed to match the widget - WPF's default ToolTip chrome is a light box with
@@ -87,9 +90,10 @@
                         </Style>
                     </Border.Style>
                     <Border.Background>
-                        <MultiBinding Converter="{StaticResource MetricColorConverter}">
-                            <Binding Path="RemainingPercentage" />
-                            <Binding Path="CustomColor" />
+                        <MultiBinding Converter="{StaticResource MetricBarColorConverter}">
+                            <Binding Path="." />
+                            <Binding Path="DataContext.Config.BarColorMode" RelativeSource="{RelativeSource AncestorType=Window}" />
+                            <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
                         </MultiBinding>
                     </Border.Background>
                     <Border.RenderTransform>
@@ -144,6 +148,116 @@
                        Visibility="{Binding DataContext.Config.ShowNumericValues, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <TextBlock.Text>
                     <MultiBinding Converter="{StaticResource ResetTimeConverter}" ConverterParameter="decimal">
+                        <Binding Path="ResetTime" />
+                        <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
+                    </MultiBinding>
+                </TextBlock.Text>
+            </TextBlock>
+        </Grid>
+    </DataTemplate>
+
+    <!-- Compact mode's single metric row: label / colored bar / % (or dollar text) / reset.
+         Shared by the floating window's Compact layout and Deskband mode (which stacks two of
+         these per column before wrapping right, so the taskbar shows Compact-style bars rather
+         than Taskbar mode's narrow vertical-fill columns). -->
+    <DataTemplate x:Key="CompactMetricRow">
+        <!-- Fixed row height (from the configured font size) keeps the column-wrap math exact;
+             the margin is horizontal-only so a row's vertical footprint stays exactly its Height. -->
+        <Grid Height="{Binding DataContext.CompactRowHeight, RelativeSource={RelativeSource AncestorType=Window}}"
+              Margin="{Binding DataContext.Config.CompactColumnGap, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource GapToMarginConverter}, ConverterParameter=Right}">
+            <Grid.ToolTip>
+                <StackPanel>
+                    <TextBlock>
+                        <TextBlock.Text>
+                            <MultiBinding StringFormat="{}{0} — {1:0}%">
+                                <Binding Path="DisplayName" />
+                                <Binding Path="RemainingPercentage" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                    <!-- Money metrics (Claude Extra Usage) add a spend/balance detail line beneath
+                         the percent summary - hidden for ordinary quota metrics. -->
+                    <TextBlock Text="{Binding TooltipDetail}"
+                               Visibility="{Binding IsMoneyMetric, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock>
+                        <TextBlock.Text>
+                            <MultiBinding Converter="{StaticResource ResetTimeConverter}">
+                                <Binding Path="ResetTime" />
+                                <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                </StackPanel>
+            </Grid.ToolTip>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="CompactLabelColumn" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="{Binding DisplayName}" Foreground="White"
+                       FontSize="{Binding DataContext.Config.WidgetFontSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+
+            <Border Grid.Column="1" Height="6" CornerRadius="3" Background="#33FFFFFF" VerticalAlignment="Center"
+                    HorizontalAlignment="Left"
+                    Width="{Binding DataContext.Config.BarWidth, RelativeSource={RelativeSource AncestorType=Window}}"
+                    Margin="{Binding DataContext.Config.CompactCellGap, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource GapToMarginConverter}}">
+                <!-- Unbounded money metrics (Extra Usage on an "Unlimited" plan) have no cap to
+                     measure a fill against - hide the bar rather than render a misleading
+                     always-full or always-empty track. -->
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsUnbounded}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <Border HorizontalAlignment="Left" CornerRadius="3">
+                    <Border.Width>
+                        <MultiBinding Converter="{StaticResource PercentageWidthMultiConverter}">
+                            <Binding Path="RemainingPercentage" />
+                            <Binding Path="DataContext.Config.BarWidth" RelativeSource="{RelativeSource AncestorType=Window}" />
+                        </MultiBinding>
+                    </Border.Width>
+                    <Border.Background>
+                        <MultiBinding Converter="{StaticResource MetricBarColorConverter}">
+                            <Binding Path="." />
+                            <Binding Path="DataContext.Config.BarColorMode" RelativeSource="{RelativeSource AncestorType=Window}" />
+                            <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
+                        </MultiBinding>
+                    </Border.Background>
+                </Border>
+            </Border>
+
+            <!-- Value column: a bare percentage for ordinary quota metrics, or the formatted
+                 dollar text for money metrics like Claude Extra Usage. -->
+            <TextBlock Grid.Column="2"
+                       Foreground="#CCCCCC" HorizontalAlignment="Right" VerticalAlignment="Center"
+                       FontSize="{Binding DataContext.Config.WidgetFontSize, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource FontScaleConverter}, ConverterParameter=0.85}"
+                       Margin="{Binding DataContext.Config.CompactCellGap, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource GapToMarginConverter}}"
+                       Visibility="{Binding DataContext.Config.ShowNumericValues, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Text" Value="{Binding RemainingPercentage, StringFormat={}{0:0}%}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsMoneyMetric}" Value="True">
+                                <Setter Property="Text" Value="{Binding ValueText}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+
+            <TextBlock Grid.Column="3" Foreground="#888888" HorizontalAlignment="Right" VerticalAlignment="Center"
+                       FontSize="{Binding DataContext.Config.WidgetFontSize, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource FontScaleConverter}, ConverterParameter=0.85}"
+                       Margin="{Binding DataContext.Config.CompactCellGap, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource GapToMarginConverter}}"
+                       Visibility="{Binding DataContext.Config.ShowNumericValues, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <TextBlock.Text>
+                    <MultiBinding Converter="{StaticResource ResetTimeConverter}" ConverterParameter="short">
                         <Binding Path="ResetTime" />
                         <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
                     </MultiBinding>

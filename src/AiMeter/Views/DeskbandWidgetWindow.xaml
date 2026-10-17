@@ -1,0 +1,79 @@
+<Window x:Class="AiMeter.Views.DeskbandWidgetWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:converters="clr-namespace:AiMeter.Converters"
+        mc:Ignorable="d"
+        Title="AiMeter Deskband" SizeToContent="Width"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ShowInTaskbar="False" ResizeMode="NoResize"
+        UseLayoutRounding="True" SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/Styles/WidgetStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <!-- Root hosted by Deskband11Lib inside the taskbar. Deliberately a separate window from
+         WidgetWindow: none of that window's topmost/click-through/self-heal/drag machinery
+         applies to a child-of-taskbar surface. -->
+    <Border x:Name="DeskbandRoot" Background="Transparent">
+
+        <!-- No Hide item and no hover controls pill: at taskbar height there's no room, and
+             the library (not a self-heal timer) governs this window's visibility. -->
+        <Border.ContextMenu>
+            <ContextMenu>
+                <MenuItem Header="Refresh Now"
+                          Command="{Binding PlacementTarget.DataContext.RefreshCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                <MenuItem Header="Switch Layout"
+                          Command="{Binding PlacementTarget.DataContext.ToggleLayoutCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                <MenuItem Header="Settings"
+                          Command="{Binding PlacementTarget.DataContext.OpenSettingsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            </ContextMenu>
+        </Border.ContextMenu>
+
+        <Grid>
+            <!-- Loading skeleton: a couple of Compact-style bars (not narrow taskbar columns),
+                 so SizeToContent="Width" doesn't collapse the host to nothing while waiting. -->
+            <StackPanel Margin="8,4" Opacity="0.45"
+                        Visibility="{Binding ShowSkeleton, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Border Height="6" Width="160" CornerRadius="3" Background="#444444" Margin="0,0,0,5" />
+                <Border Height="6" Width="120" CornerRadius="3" Background="#444444" />
+            </StackPanel>
+
+            <Grid Visibility="{Binding ShowRealContent, Converter={StaticResource BooleanToVisibilityConverter}}">
+
+                <!-- Empty state: lock glyph + call-to-action, Compact style. Click routes to Settings. -->
+                <Border Padding="10,0" Background="Transparent" Cursor="Hand"
+                        Visibility="{Binding IsEmptyState, Converter={StaticResource BooleanToVisibilityConverter}}"
+                        MouseLeftButtonDown="OnEmptyState_Click">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="&#128274;" FontSize="12" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="Log in required" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Deskband shows the Compact bars: a vertical WrapPanel fills two rows per
+                     column (DeskbandColumnMaxHeight), then wraps into the next column to the
+                     right, matching the floating widget's Compact look inside the taskbar. -->
+                <ItemsControl ItemsSource="{Binding Metrics}"
+                              ItemTemplate="{StaticResource CompactMetricRow}"
+                              Grid.IsSharedSizeScope="True"
+                              Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Vertical" MaxHeight="{Binding DeskbandColumnMaxHeight}"
+                                       Margin="{Binding Config.CompactColumnGap, Converter={StaticResource GapToMarginConverter}, ConverterParameter=NegativeRight}" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

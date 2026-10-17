@@ -49,6 +49,12 @@ public partial class WidgetViewModel : ObservableObject
         ? Config.BarsPerColumn * CompactRowHeight + 0.5
         : double.PositiveInfinity;
 
+    /// <summary>
+    /// Height cap for Deskband mode's Compact-style column: exactly two rows before wrapping
+    /// into the next column to the right, so the taskbar shows Compact bars two-high.
+    /// </summary>
+    public double DeskbandColumnMaxHeight => 2 * CompactRowHeight + 0.5;
+
     [ObservableProperty]
     private DateTime _now = DateTime.Now;
 
@@ -94,6 +100,7 @@ public partial class WidgetViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(CompactRowHeight));
                 OnPropertyChanged(nameof(CompactColumnMaxHeight));
+                OnPropertyChanged(nameof(DeskbandColumnMaxHeight));
             }
         };
 
@@ -126,11 +133,22 @@ public partial class WidgetViewModel : ObservableObject
     [RelayCommand]
     private void ToggleLayout()
     {
-        Config.WidgetLayoutMode = Config.WidgetLayoutMode == WidgetLayoutMode.Compact
-            ? WidgetLayoutMode.Taskbar
-            : WidgetLayoutMode.Compact;
+        Config.WidgetLayoutMode = NextLayoutMode(Config.WidgetLayoutMode, Config.IsDeskbandSupported);
         _settingsManager.Save();
     }
+
+    /// <summary>
+    /// Cycles the layout modes in order <c>Compact → Taskbar → (Deskband) → Compact</c>.
+    /// Deskband is skipped entirely when the OS can't host it, so an unsupported machine
+    /// alternates Compact/Taskbar exactly as before.
+    /// </summary>
+    public static WidgetLayoutMode NextLayoutMode(WidgetLayoutMode current, bool deskbandSupported) => current switch
+    {
+        WidgetLayoutMode.Compact => WidgetLayoutMode.Taskbar,
+        WidgetLayoutMode.Taskbar => deskbandSupported ? WidgetLayoutMode.Deskband : WidgetLayoutMode.Compact,
+        WidgetLayoutMode.Deskband => WidgetLayoutMode.Compact,
+        _ => WidgetLayoutMode.Compact,
+    };
 
     public void PersistPosition(double left, double top)
     {

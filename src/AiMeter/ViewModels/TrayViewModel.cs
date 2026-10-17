@@ -10,27 +10,22 @@ namespace AiMeter.ViewModels;
 public partial class TrayViewModel : ObservableObject
 {
     private readonly IProviderManager _providerManager;
-    private readonly WidgetWindow _widgetWindow;
+    private readonly WidgetHostManager _widgetHost;
     private readonly SettingsWindow _settingsWindow;
 
-    public TrayViewModel(IProviderManager providerManager, WidgetWindow widgetWindow, SettingsWindow settingsWindow)
+    public TrayViewModel(IProviderManager providerManager, WidgetHostManager widgetHost, SettingsWindow settingsWindow)
     {
         _providerManager = providerManager;
-        _widgetWindow = widgetWindow;
+        _widgetHost = widgetHost;
         _settingsWindow = settingsWindow;
     }
 
     [RelayCommand]
     private void ShowWidget()
     {
-        // Re-showing the widget from the tray is intentional, so clear any prior user-hide.
-        _widgetWindow.IsUserHidden = false;
-        _widgetWindow.Show();
-        if (_widgetWindow.WindowState == WindowState.Minimized)
-        {
-            _widgetWindow.WindowState = WindowState.Normal;
-        }
-        _widgetWindow.Activate();
+        // Delegated to the host manager: in Deskband mode there is no floating window to
+        // re-show (the taskbar/library owns visibility), so this is intentionally a no-op.
+        _widgetHost.ShowWidget();
     }
 
     [RelayCommand]
