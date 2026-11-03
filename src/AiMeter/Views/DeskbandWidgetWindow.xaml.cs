@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using AiMeter.Models;
 using AiMeter.ViewModels;
 using Deskband11Lib.Core;
@@ -26,13 +27,17 @@ public partial class DeskbandWidgetWindow : Window
     // layout uses the same column-first wrap, just with a taller (BarsPerColumn) cap.
     private const int RowsPerColumn = 2;
 
-    // Rough per-column width beyond the bar itself (label + % + reset + cell/column gaps);
-    // the library re-measures the real content on layout, so this only seeds the first pass.
+    // Rough per-column width beyond the bar itself (label + % + reset + cell/column gaps).
+    // Only seeds the first pass: the library sizes the host to PreferredWidth and does not
+    // re-measure, so once WPF has measured the real content that width is used instead.
     private const double PerColumnChrome = 150;
+    private const double HostPadding = 16;
 
     private readonly WidgetViewModel _viewModel;
     private readonly TaskbarContentHostOptions _options;
     private TaskbarContentHost? _host;
+    private readonly DispatcherTimer _measureTimer;
+    private double _contentWidth;
 
     /// <summary>Raised when the library reports the taskbar window was recreated, so the
     /// manager can rebuild this host against the new taskbar HWND.</summary>
@@ -50,6 +55,10 @@ public partial class DeskbandWidgetWindow : Window
         // so recompute it (and ask the library to re-measure) when either changes.
         viewModel.Metrics.CollectionChanged += OnLayoutInputsChanged;
         viewModel.Config.PropertyChanged += OnConfigChanged;
+
+        // Label and reset-text widths change with the values and the ticking countdowns
+        // (e.g. "4h 32m" → "13d 17h"), so keep following the measured content width.
+        _measureTimer = new DispatcherTimer(TimeSpan.FromSeconds(2), DispatcherPriority.Background, (s, e) => MeasureContentWidth(), Dispatcher);
     }
 
     /// <summary>
@@ -67,6 +76,7 @@ public partial class DeskbandWidgetWindow : Window
     {
         _viewModel.Metrics.CollectionChanged -= OnLayoutInputsChanged;
         _viewModel.Config.PropertyChanged -= OnConfigChanged;
+        _measureTimer.Stop();
         DisposeHost();
         base.OnClosed(e);
     }
@@ -99,9 +109,25 @@ public partial class DeskbandWidgetWindow : Window
 
     private void OnLayoutInputsChanged(object? sender, NotifyCollectionChangedEventArgs e) => ApplyContentSize();
 
+    // The library sizes this window to PreferredWidth, and the content then lays out at that
+    // width - so measure it against unbounded width to get the width it actually needs. Only a
+    // real change re-sizes the host.
+    private void MeasureContentWidth()
+    {
+        if (MetricsItems.Visibility != Visibility.Visible || MetricsItems.Items.Count == 0) return;
+
+        MetricsItems.Measure(new Size(double.PositiveInfinity, MetricsItems.ActualHeight > 0 ? MetricsItems.ActualHeight : double.PositiveInfinity));
+        var width = Math.Ceiling(MetricsItems.DesiredSize.Width);
+        MetricsItems.InvalidateMeasure();
+
+        if (width <= 0 || Math.Abs(width - _contentWidth) < 1) return;
+        _contentWidth = width;
+        ApplyContentSize();
+    }
+
     private void ApplyContentSize()
     {
-        _options.PreferredWidth = PreferredWidthForMetrics(_viewModel);
+        _options.PreferredWidth = _contentWidth > 0 ? _contentWidth + HostPadding : PreferredWidthForMetrics(_viewModel);
         _options.PreferredHeight = PreferredHeightForMetrics(_viewModel);
         Height = _options.PreferredHeight;
         _host?.NotifyContentSizeChanged();
@@ -126,7 +152,7 @@ public partial class DeskbandWidgetWindow : Window
     private static double PreferredWidthForMetrics(WidgetViewModel vm)
     {
         var columns = Math.Max(1, (int)Math.Ceiling(vm.Metrics.Count / (double)RowsPerColumn));
-        return columns * (vm.Config.BarWidth + PerColumnChrome) + 16;
+        return columns * (vm.Config.BarWidth + PerColumnChrome) + HostPadding;
     }
 
     private static double PreferredHeightForMetrics(WidgetViewModel vm)

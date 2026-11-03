@@ -2,6 +2,20 @@
 
 All notable changes to AiMeter are documented in this file.
 
+## [2.0.1] - 2026-11-03
+
+### Fixed
+- **OpenCode usage after the console redesign** — Go usage moved to the per-workspace
+  *Activity ▸ My usage* page (`/console/{workspace}/activity/overview`) and `/console/go` no
+  longer loads `/api/go/status`, so OpenCode showed *Error Fetching*. AiMeter now finds your
+  workspace from `/console` and reads the Rolling/Weekly/Monthly meters (percent used and
+  reset times) that the page renders. It waits for the Go card to finish loading, so a slow
+  page is no longer mistaken for *No active Go subscription*. The old org-switching and
+  legacy `/workspace/…/go` fallbacks were removed.
+- **Deskband clipping** — the in-taskbar band was sized from a fixed per-column estimate, so
+  long labels or reset times (e.g. `13d 17h`) were cut off at its right edge. It now sizes
+  itself to the measured content and follows it as the countdowns change.
+
 ## [2.0.0] - 2026-10-18
 
 ### Added

@@ -4,22 +4,30 @@ A lightweight Windows desktop app that keeps your AI service usage limits visibl
 glance. AiMeter lives in the system tray and shows a small always-on-top widget that
 tracks remaining quota and reset timers across AI providers.
 
-It currently tracks **Claude** (claude.ai session/weekly limits) and **OpenCode**
-(opencode.ai Go rolling/weekly/monthly usage), side by side, on an extensible provider
+It currently tracks **Claude** (claude.ai session/weekly limits and Extra Usage) and
+**OpenCode** (opencode.ai Go rolling/weekly/monthly usage, read from the OpenCode Console), side by side, on an extensible provider
 architecture designed for OpenAI, Gemini, Grok, OpenRouter, DeepSeek, and others.
 
-![Widget – Taskbar mode](docs/taskbar-mode.png)
-![Widget – Compact mode](docs/compact-mode.png)
-![Settings](docs/settings.png)
+| Compact | Taskbar |
+|---------|---------|
+| ![Widget – Compact layout](docs/compact-mode.png) | ![Widget – Taskbar layout](docs/taskbar-mode.png) |
+
+**Deskband** — the bars embedded inside the Windows 11 taskbar:
+
+![Widget – Deskband layout](docs/deskband-mode.png)
+
+**Settings** — tabs for Widget, Compact, Metrics and General (colors, alerts, accounts):
+
+![Settings – General tab](docs/settings.png)
 
 ## Download
 
-**Latest release: v2.0.0** —
-[AiMeter.exe](https://github.com/LanternOfDarkness/AiMeter/releases/download/v2.0.0/AiMeter.exe)
+**Latest release: v2.0.1** —
+[AiMeter.exe](https://github.com/LanternOfDarkness/AiMeter/releases/download/v2.0.1/AiMeter.exe)
 (30.0 MiB)
 
 ```
-SHA-256: 6B26B2A46C5EF3998C1CB88E70B6CAC7B34DE8483D30464797C83C91D8AA9D25
+SHA-256: 705E5A61E7C58F13B33AD869271AFE3E31F94D661868AB8F083C59545EE84F4A
 ```
 
 A single framework-dependent `AiMeter.exe` for **win-x64** — no zip, no loose files. It needs
@@ -34,37 +42,39 @@ follow-up (see [docs/design.md](docs/design.md)).
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
-## What's new in v2.0.0
+## What's new in v2.0.1
 
-- **Deskband mode** — embed the widget *inside* the Windows 11 taskbar, showing the Compact
-  bars two rows per column. A third layout alongside Compact and Taskbar (Windows 11 24H2+).
-- **Progressive & Pace coloring** — color bars by a smooth remaining-% gradient, or by
-  remaining quota versus time-to-reset (green while behind the clock, red once running ahead).
-  The existing green/yellow/red Threshold stays the default.
-- **Single-exe release** — ships as one `AiMeter.exe`, with no loose dependency files.
-- **Now on .NET 10** — Windows 11 24H2 (build 26100) or later is required; Windows 10 is no
-  longer supported.
+- **OpenCode works again** after opencode.ai's console redesign — Go usage is now read from
+  your workspace's *Activity ▸ My usage* page. Rolling, Weekly and Monthly meters and their
+  reset times are back, and a slow-loading page no longer shows up as "No active Go
+  subscription".
+- **Deskband no longer clips** — the in-taskbar band sizes itself to its content, so long
+  labels and reset times (`13d 17h`) aren't cut off at the right edge.
+
+v2.0.0 added the **Deskband** layout, **Progressive & Pace** bar coloring, the single-exe
+release and the move to .NET 10 — see [CHANGELOG.md](CHANGELOG.md).
 
 ## Features
 
 - **Multiple providers** — track Claude and OpenCode together; log into each under
-  Settings → Accounts. Deselect any metric you don't want on the widget.
+  Settings → General → Accounts. Deselect any metric you don't want on the widget.
 - **Claude Extra Usage** — tracks Claude's pay-as-you-go spend limit as a dollar figure
   (`$used / $limit`) with a proportional bar. On an "Unlimited" Extra Usage plan (no monthly
   cap), it shows the prepaid balance left instead, with no bar.
 - **Floating widget** — always-on-top, draggable, remembers its position (and can sit over
   the taskbar).
   - **Compact** layout: a slim strip of thin bars with % and a short reset label (`5h`, `2d 3h`).
-    Fully customizable from Settings → Compact — bars-per-column (wraps into extra columns),
-    bar width, cell/column gaps, font size, per-metric custom label and bar color, and a
-    toggle to hide the always-visible numbers (they stay one hover away).
+    Customizable from Settings → Compact (bars-per-column, which wraps into extra columns; bar
+    width; cell/column gaps), Settings → Widget (font size, and a toggle to hide the
+    always-visible numbers — they stay one hover away) and Settings → Metrics (per-metric
+    custom label and bar color).
   - **Taskbar** layout: docks flush against the bottom of the screen, overlapping the
     taskbar — one thin vertical-fill column per metric showing a 3-letter code, the quota
     fill, the remaining % and a compact reset countdown (`3.3h`, `5.2d`) all at rest; hover a
     column for the full name and verbose reset time.
   - **Deskband** layout (Windows 11 24H2+): embeds the same Compact bars *inside* the taskbar —
-    two rows per column, wrapping into extra columns to the right — kept clear of the Start
-    button, app buttons and the notification area. Explorer restarts, DPI changes and monitor
+    two rows per column, wrapping into extra columns to the right, and sized to fit its
+    content — kept clear of the Start button, app buttons and the notification area. Explorer restarts, DPI changes and monitor
     disconnects are recovered automatically.
 - **Bar coloring modes** (Settings → General → Colors) — color uncustomized bars by the fixed
   green/yellow/red **Thresholds** (default), a smooth **Progressive** remaining-% gradient, or
@@ -84,7 +94,8 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes.
   straight through to the game. Reverts instantly when a normal window regains focus.
 - **Adjustable opacity** with an on-hover dim, or turn opacity off entirely.
 - **Configurable notifications** for low, exhausted, and reset quotas.
-- **Pick which metrics are shown** — deselected metrics stay listed so you can re-enable them.
+- **Pick which metrics are shown** (Settings → Metrics) — deselected metrics stay listed so
+  you can re-enable them.
 
 ## Quota color states
 
@@ -150,7 +161,7 @@ dotnet publish src/AiMeter/AiMeter.csproj -c Release -r win-x64 --self-contained
 The release ships as a single `AiMeter.exe` (see [Download](#download));
 `installer/aimeter-full.iss` builds the self-contained variant.
 
-On first run, open **Settings → Accounts** and log into Claude.ai and/or opencode.ai to
+On first run, open **Settings → General → Accounts** and log into Claude.ai and/or opencode.ai to
 fetch your usage limits — each provider has its own login row. Authentication runs in an
 embedded browser; only a lightweight "logged in" marker is stored locally (the real session
 lives in the WebView2 profile). Log into just the providers you use.

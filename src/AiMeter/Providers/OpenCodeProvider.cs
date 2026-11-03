@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text.Json;
+using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using AiMeter.Models;
@@ -16,56 +16,51 @@ namespace AiMeter.Providers;
 /// spins up no WebView2 — it just returns the "Auth Required" placeholder, so registering it
 /// is free.
 ///
-/// The Go usage lives in the OpenCode Console SPA (opencode.ai/console/go), which loads it
-/// from GET /api/go/status using a bearer token and org header the SPA manages itself. Rather
-/// than re-implementing that auth, the provider loads the Go page in the logged-in hidden
-/// browser and captures the page's own /api/go/status response. Its shape (from the console
-/// bundle's schema):
-///   { ..., access: null | { startsAt, endsAt, meters: {
-///       fiveHour: { startsAt?, resetsAt?, limitMicroCents, usedMicroCents },
-///       week:     { startsAt,  resetsAt,  limitMicroCents, usedMicroCents },
-///       month:    { limitMicroCents, usedMicroCents } } } }
-/// access is null without an active Go subscription; the month meter resets at access.endsAt.
+/// The Go usage lives on the OpenCode Console's per-workspace "My usage" page
+/// (opencode.ai/console/{workspace}/activity/overview). The console no longer exposes a
+/// stable JSON endpoint for it, so the provider loads that page in the logged-in hidden
+/// browser and reads the meters it renders. Each is an accessible progress bar:
+///   &lt;p title="11/3/2026, 3:22:58 AM"&gt;Resets in 0h 35m&lt;/p&gt;
+///   &lt;div role="progressbar" aria-label="Rolling Go usage" aria-valuenow="100" …&gt;
+/// The workspace id comes from where /console redirects to (or links from it).
 /// </summary>
 public class OpenCodeProvider : IProvider
 {
     public string Name => "OpenCode";
 
-    public const string GoPageUrl = "https://opencode.ai/console/go";
-    public const string StatusApiPath = "/api/go/status";
-    public const string OrgsApiPath = "/api/orgs";
-    public const string SelectedOrgStorageKey = "opencode-console.org-id";
-    private static readonly string[] CapturedApis = { StatusApiPath, OrgsApiPath };
-    private const int MaxOrgsToTry = 5;
-    private static readonly TimeSpan OrgSearchBackoff = TimeSpan.FromMinutes(30);
+    public const string ConsoleUrl = "https://opencode.ai/console";
+    public static string UsagePageUrl(string workspaceId) => $"{ConsoleUrl}/{workspaceId}/activity/overview";
+
+    // Ready once the Go meters render. The Go card first renders as an aria-busy skeleton (no
+    // progress bars) next to an already-filled Credits card, so Credits alone only counts as
+    // ready when there is no Go card at all (no subscription) and nothing is still loading.
+    private const string UsageReadyCheck =
+        """document.querySelector('[role="progressbar"][aria-label$="Go usage"]') || (document.querySelector('section[aria-label="Credits"]') && !document.querySelector('section[aria-label="Go usage"], [aria-busy="true"]'))""";
+    private const string GoCardMarker = "aria-label=\"Go usage\"";
+    private const string WorkspaceReadyCheck =
+        """/\/console\/[a-z]+_[A-Za-z0-9]+/.test(location.pathname) || document.querySelector('a[href*="/activity"]')""";
 
     private const string NoSubscriptionName = "OpenCode (No Subscription)";
     public const string NoSubscriptionNote = "No active Go subscription";
     public const string ErrorNote = "Usage unavailable (see log)";
 
-    // Meter keys in the status payload → widget names (unchanged from the old page-scraping
-    // provider so users' saved selections/labels/colors keep applying).
-    private static readonly (string Key, string Name, TimeSpan? Duration)[] Meters =
+    // Meter labels on the page → widget names (unchanged so users' saved selections/labels/
+    // colors keep applying).
+    private static readonly (string Label, string Name, TimeSpan Duration)[] Meters =
     {
-        ("fiveHour", "OpenCode Rolling", TimeSpan.FromHours(5)),
-        ("week",     "OpenCode Weekly",  TimeSpan.FromDays(7)),
-        ("month",    "OpenCode Monthly", null), // taken from the subscription period
+        ("Rolling", "OpenCode Rolling", TimeSpan.FromHours(5)),
+        ("Weekly",  "OpenCode Weekly",  TimeSpan.FromDays(7)),
+        ("Monthly", "OpenCode Monthly", TimeSpan.FromDays(30)),
     };
 
-    // Same windows as keyed in the old site's workspace-page hydration payload.
-    private static readonly (string Key, string Name, TimeSpan Duration)[] LegacyUsageKinds =
-    {
-        ("rollingUsage", "OpenCode Rolling", TimeSpan.FromHours(5)),
-        ("weeklyUsage",  "OpenCode Weekly",  TimeSpan.FromDays(7)),
-        ("monthlyUsage", "OpenCode Monthly", TimeSpan.FromDays(30)),
-    };
+    private static readonly Regex WorkspaceIdPattern = new(@"/console/(?<id>[a-z]+_[A-Za-z0-9]+)(?:[/?#""]|$)");
+    private static readonly Regex ProgressBarTag = new(@"<div\b[^>]*\brole=""progressbar""[^>]*>");
+    private static readonly Regex ResetLine = new(@"<p\b[^>]*\btitle=""(?<title>[^""]*)""[^>]*>(?<text>[^<]*)</p>");
 
     private readonly IOpenCodeSession _session;
     private readonly IOpenCodeApiClient _apiClient;
     private readonly ILogger<OpenCodeProvider> _logger;
-    private DateTime _nextOrgSearch = DateTime.MinValue;
-    private DateTime _nextLegacyTry = DateTime.MinValue;
-    private int _backoffGeneration;
+    private string? _workspaceId;
 
     public OpenCodeProvider(IOpenCodeSession session, IOpenCodeApiClient apiClient, ILogger<OpenCodeProvider> logger)
     {
@@ -81,77 +76,61 @@ public class OpenCodeProvider : IProvider
             return new[] { Placeholder("OpenCode (Auth Required)") };
         }
 
-        // A fresh login may have fixed whatever the back-offs were waiting out.
-        if (_backoffGeneration != _session.LoginGeneration)
-        {
-            _backoffGeneration = _session.LoginGeneration;
-            _nextOrgSearch = _nextLegacyTry = DateTime.MinValue;
-        }
-
         try
         {
-            var load = await _apiClient.CaptureResponsesAsync(GoPageUrl, CapturedApis);
-            if (IsLoggedOut(load))
+            if (_workspaceId is null)
             {
-                _logger.LogWarning("OpenCode session expired (page {Url}); clearing", load.FinalUrl);
-                _session.Clear();
-                return new[] { Placeholder("OpenCode (Session Expired)") };
-            }
+                var console = await _apiClient.ReadRenderedPageAsync(ConsoleUrl, WorkspaceReadyCheck);
+                if (console.BouncedToLogin) return Expired(console.FinalUrl);
 
-            var status = BestStatus(load);
-            if (status is null)
-            {
-                _logger.LogWarning("OpenCode {Api} not captured (page {Url}, captured: {Captured})",
-                    StatusApiPath, load.FinalUrl, Describe(load));
-                return Report(new[] { Placeholder("OpenCode (Error Fetching)") }, ErrorNote);
-            }
-
-            // A JSON null status means the console's selected org has no Go subscription -
-            // typically the auto-created personal org rather than the (legacy wrk_) workspace
-            // that holds the plan. Look for the plan in the user's other orgs.
-            if (IsNullBody(status.Body) && DateTime.Now >= _nextOrgSearch)
-            {
-                var found = await FindOrgWithSubscriptionAsync(load, status.OrgId);
-                if (found is not null)
+                _workspaceId = ParseWorkspaceId(console.FinalUrl, console.Html);
+                if (_workspaceId is null)
                 {
-                    status = found;
-                }
-                else
-                {
-                    _nextOrgSearch = DateTime.Now + OrgSearchBackoff;
+                    _logger.LogWarning("OpenCode: no workspace found (page {Url}, {Length} chars)", console.FinalUrl, console.Html?.Length ?? 0);
+                    return Report(new[] { Placeholder("OpenCode (Error Fetching)") }, ErrorNote);
                 }
             }
 
-            // Still no plan in the console: Go subscriptions made on the old site can still live
-            // only on its per-workspace page (/workspace/wrk_…/go). The console hands us the
-            // workspace id (legacy workspaces became wrk_ orgs), which /go no longer links to.
-            // Each miss can cost a 20s wait on the old login page, hence the back-off.
-            if (IsNullBody(status.Body) && DateTime.Now >= _nextLegacyTry)
+            var page = await _apiClient.ReadRenderedPageAsync(UsagePageUrl(_workspaceId), UsageReadyCheck);
+            if (page.BouncedToLogin) return Expired(page.FinalUrl);
+
+            var metrics = page.Html is not null ? ParseUsagePage(page.Html) : new List<UsageMetric>();
+            if (metrics.Count > 0)
             {
-                var legacy = await GetLegacyWorkspaceUsageAsync(load, status.OrgId);
-                if (legacy.Count > 0)
-                {
-                    return Report(legacy, null);
-                }
-                _nextLegacyTry = DateTime.Now + OrgSearchBackoff;
+                _logger.LogInformation("OpenCode usage ({Ws}): {Meters}", _workspaceId,
+                    string.Join(", ", metrics.Select(m => $"{m.Name} {100 - m.RemainingQuota:0.#}% used, resets {m.ResetTime:g}")));
+                return Report(metrics, null);
+            }
+            if (page.Ready && page.Html?.Contains(GoCardMarker, StringComparison.Ordinal) == false)
+            {
+                // The page rendered (Credits card) but has no Go card.
+                return Report(new[] { Placeholder(NoSubscriptionName) }, NoSubscriptionNote);
             }
 
-            var metrics = ParseStatus(status.Body!, out var problem);
-            var note = metrics.Any(m => m.Name == NoSubscriptionName) ? NoSubscriptionNote
-                : problem is not null ? ErrorNote
-                : null;
-            // Log a problem once when it appears rather than on every poll.
-            if (problem is not null && note != _session.StatusNote)
+            // Log once when the problem appears rather than on every poll, and re-discover the
+            // workspace next time in case it moved.
+            if (_session.StatusNote != ErrorNote)
             {
-                _logger.LogWarning("OpenCode {Api} (org {Org}): {Problem}", StatusApiPath, status.OrgId ?? "default", problem);
+                _logger.LogWarning("OpenCode: no Go usage on {Url} (ended at {Final}, ready {Ready}, {Length} chars, Go card {GoCard})",
+                    UsagePageUrl(_workspaceId), page.FinalUrl, page.Ready, page.Html?.Length ?? 0,
+                    page.Html?.Contains(GoCardMarker, StringComparison.Ordinal) == true);
             }
-            return Report(metrics, note);
+            _workspaceId = null;
+            return Report(new[] { Placeholder("OpenCode (Error Fetching)") }, ErrorNote);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "OpenCode usage fetch threw an unhandled exception");
             return Report(new[] { Placeholder("OpenCode (Error Fetching)") }, ErrorNote);
         }
+    }
+
+    private IReadOnlyList<UsageMetric> Expired(string url)
+    {
+        _logger.LogWarning("OpenCode session expired (page {Url}); clearing", url);
+        _workspaceId = null;
+        _session.Clear();
+        return new[] { Placeholder("OpenCode (Session Expired)") };
     }
 
     /// <summary>Publishes the account status note shown in Settings, then passes the metrics through.</summary>
@@ -161,266 +140,89 @@ public class OpenCodeProvider : IProvider
         return metrics;
     }
 
-    /// <summary>
-    /// Switches the console's selected org (its own localStorage key) to each of the user's
-    /// other orgs and reloads, returning the first non-null status. The winning org stays
-    /// selected, so later polls hit it directly; if none has a plan the original is restored.
-    /// </summary>
-    private async Task<CapturedResponse?> FindOrgWithSubscriptionAsync(CaptureResult load, string? currentOrgId)
+    /// <summary>The console workspace id (e.g. wrk_…), from the URL /console settled on, else its first workspace link.</summary>
+    public static string? ParseWorkspaceId(string url, string? html)
     {
-        var orgs = ParseOrgs(load.Responses.LastOrDefault(r => r.Path == OrgsApiPath && r.StatusCode == 200)?.Body);
-        var candidates = orgs.Where(o => o.Id != currentOrgId).Take(MaxOrgsToTry).ToList();
-        if (candidates.Count == 0)
-        {
-            _logger.LogWarning("OpenCode: selected org {Org} has no Go subscription and no other orgs were found ({Count} total)",
-                currentOrgId ?? "default", orgs.Count);
-            return null;
-        }
-
-        var original = await _apiClient.GetLocalStorageAsync(SelectedOrgStorageKey);
-        foreach (var (id, name) in candidates)
-        {
-            // The console's storage encoding isn't documented: try the raw id, then a JSON
-            // string, and trust whichever the page actually sends back as x-org-id.
-            foreach (var stored in new[] { id, JsonSerializer.Serialize(id) })
-            {
-                await _apiClient.SetLocalStorageAsync(SelectedOrgStorageKey, stored);
-                var retry = await _apiClient.CaptureResponsesAsync(GoPageUrl, CapturedApis);
-                var status = BestStatus(retry);
-                if (status is null || status.OrgId != id) continue;
-
-                if (!IsNullBody(status.Body))
-                {
-                    _logger.LogInformation("OpenCode: Go subscription found in org '{Name}' ({Org}); selected it", name, id);
-                    return status;
-                }
-                break; // right org, no plan here
-            }
-        }
-
-        await _apiClient.SetLocalStorageAsync(SelectedOrgStorageKey, original);
-        _logger.LogWarning("OpenCode: no Go subscription in any of {Count} orgs ({Names})",
-            orgs.Count, string.Join(", ", orgs.Select(o => o.Name)));
-        return null;
+        var match = WorkspaceIdPattern.Match(url);
+        if (!match.Success && html is not null) match = WorkspaceIdPattern.Match(html);
+        return match.Success ? match.Groups["id"].Value : null;
     }
 
     /// <summary>
-    /// Reads Rolling/Weekly/Monthly usage from the old site's workspace page for each of the
-    /// user's legacy (wrk_) workspaces; empty if none has usage there.
+    /// Reads the Rolling/Weekly/Monthly meters from the rendered "My usage" page. aria-valuenow
+    /// is percent used; the reset time is the absolute title of the "Resets in …" line just
+    /// before each bar, falling back to the relative text when the title won't parse.
     /// </summary>
-    private async Task<List<UsageMetric>> GetLegacyWorkspaceUsageAsync(CaptureResult load, string? currentOrgId)
+    public static List<UsageMetric> ParseUsagePage(string html) => ParseUsagePage(html, DateTime.Now);
+
+    public static List<UsageMetric> ParseUsagePage(string html, DateTime now)
     {
-        var workspaceIds = ParseOrgs(load.Responses.LastOrDefault(r => r.Path == OrgsApiPath && r.StatusCode == 200)?.Body)
-            .Select(o => o.Id)
-            .Prepend(currentOrgId)
-            .Where(id => id is not null && id.StartsWith("wrk_", StringComparison.Ordinal))
-            .Distinct()
-            .Take(MaxOrgsToTry)
-            .ToList();
-
-        foreach (var id in workspaceIds)
-        {
-            // Navigate rather than fetch(): the page may bounce through auth.opencode.ai, which a
-            // same-origin fetch can't follow.
-            var (finalUrl, html) = await _apiClient.NavigateAndReadAsync($"https://opencode.ai/workspace/{id}/go");
-            var metrics = html is not null ? ParseLegacyUsage(html).ToList() : new List<UsageMetric>();
-            if (metrics.Count > 0)
-            {
-                return metrics;
-            }
-            _logger.LogWarning("OpenCode legacy workspace page for {Org}: ended at {Url}, {Length} chars, no usage stats",
-                id, finalUrl, html?.Length ?? 0);
-        }
-        return new List<UsageMetric>();
-    }
-
-    /// <summary>
-    /// Extracts usage from the old workspace page's SolidStart hydration payload, where each
-    /// stat appears as e.g. <c>rollingUsage:$R[31]={status:"ok",resetInSec:13824,usagePercent:4}</c>
-    /// (the <c>$R[n]=</c> back-reference tag may be absent). usagePercent is percent used.
-    /// </summary>
-    public static IEnumerable<UsageMetric> ParseLegacyUsage(string html)
-    {
-        foreach (var (key, name, duration) in LegacyUsageKinds)
-        {
-            // Object body has no nested braces, so [^{}]* is safe. Requiring the "{" skips the
-            // unrelated "<key>:null" in other payload objects.
-            var obj = Regex.Match(html, Regex.Escape(key) + @":(?:\$R\[\d+\]=)?\{(?<body>[^{}]*)\}");
-            if (!obj.Success) continue;
-            var body = obj.Groups["body"].Value;
-
-            var pct = Regex.Match(body, @"usagePercent:(?<v>\d+(?:\.\d+)?)");
-            if (!pct.Success) continue;
-            var percentUsed = double.Parse(pct.Groups["v"].Value, CultureInfo.InvariantCulture);
-
-            DateTime? resetTime = null;
-            var sec = Regex.Match(body, @"resetInSec:(?<v>\d+)");
-            if (sec.Success && long.TryParse(sec.Groups["v"].Value, out var seconds))
-            {
-                resetTime = DateTime.Now.AddSeconds(seconds);
-            }
-
-            yield return new UsageMetric
-            {
-                Name = name,
-                TotalQuota = 100,
-                RemainingQuota = Math.Max(0, 100 - percentUsed),
-                ResetTime = resetTime,
-                WindowDuration = duration,
-            };
-        }
-    }
-
-    private static bool IsLoggedOut(CaptureResult load) =>
-        load.BouncedToLogin || load.Responses.Any(r => r.Path == StatusApiPath && r.StatusCode is 401 or 403);
-
-    // The page can query status more than once (e.g. before and after the org resolves):
-    // prefer the last one that carries a subscription, else the last successful one.
-    private static CapturedResponse? BestStatus(CaptureResult load)
-    {
-        var ok = load.Responses.Where(r => r.Path == StatusApiPath && r.StatusCode == 200 && r.Body is not null).ToList();
-        return ok.LastOrDefault(r => !IsNullBody(r.Body)) ?? ok.LastOrDefault();
-    }
-
-    private static bool IsNullBody(string? body) => body is null || body.Trim() == "null";
-
-    private static string Describe(CaptureResult load) =>
-        load.Responses.Count == 0 ? "nothing" : string.Join(", ", load.Responses.Select(r => $"{r.Path}={r.StatusCode}"));
-
-    /// <summary>Parses GET /api/orgs: an array of { id, name }.</summary>
-    public static List<(string Id, string Name)> ParseOrgs(string? json)
-    {
-        var orgs = new List<(string, string)>();
-        if (string.IsNullOrWhiteSpace(json)) return orgs;
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind != JsonValueKind.Array) return orgs;
-            foreach (var org in doc.RootElement.EnumerateArray())
-            {
-                if (org.ValueKind == JsonValueKind.Object
-                    && org.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String)
-                {
-                    var name = org.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString()! : id.GetString()!;
-                    orgs.Add((id.GetString()!, name));
-                }
-            }
-        }
-        catch (JsonException)
-        {
-        }
-        return orgs;
-    }
-
-    /// <summary>
-    /// Turns a /api/go/status payload into the Rolling/Weekly/Monthly metrics. Percent used is
-    /// usedMicroCents / limitMicroCents (what the console's own meters show); remaining =
-    /// 100 − used. Returns a single placeholder and sets <paramref name="problem"/> when the
-    /// payload has no usable meters.
-    /// </summary>
-    public static List<UsageMetric> ParseStatus(string json, out string? problem)
-    {
-        problem = null;
-        JsonElement root;
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            root = doc.RootElement.Clone();
-        }
-        catch (JsonException)
-        {
-            problem = $"response is not JSON ({json.Length} chars)";
-            return new List<UsageMetric> { Placeholder("OpenCode (Error Fetching)") };
-        }
-
-        if (root.ValueKind == JsonValueKind.Null)
-        {
-            problem = "no Go subscription in this org (status is null)";
-            return new List<UsageMetric> { Placeholder(NoSubscriptionName) };
-        }
-        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("access", out var access))
-        {
-            problem = "no 'access' field; top-level keys: " + TopLevelKeys(root);
-            return new List<UsageMetric> { Placeholder("OpenCode (No Usage Data)") };
-        }
-        if (access.ValueKind != JsonValueKind.Object)
-        {
-            problem = "no active Go subscription (access is null)";
-            return new List<UsageMetric> { Placeholder(NoSubscriptionName) };
-        }
-        if (!access.TryGetProperty("meters", out var meters) || meters.ValueKind != JsonValueKind.Object)
-        {
-            problem = "no 'meters' in access; keys: " + TopLevelKeys(access);
-            return new List<UsageMetric> { Placeholder("OpenCode (No Usage Data)") };
-        }
-
-        var periodStart = ReadDate(access, "startsAt");
-        var periodEnd = ReadDate(access, "endsAt");
-
         var metrics = new List<UsageMetric>();
-        foreach (var (key, name, duration) in Meters)
+        // Start at the Go card so a meter without a reset line can't borrow an unrelated title.
+        var rowStart = Math.Max(0, html.IndexOf(GoCardMarker, StringComparison.Ordinal));
+        foreach (Match bar in ProgressBarTag.Matches(html))
         {
-            if (!meters.TryGetProperty(key, out var meter) || meter.ValueKind != JsonValueKind.Object) continue;
+            var label = Attribute(bar.Value, "aria-label");
+            var meter = Meters.FirstOrDefault(m => label == $"{m.Label} Go usage");
+            var before = html[rowStart..bar.Index];
+            rowStart = bar.Index + bar.Length;
+            if (meter.Name is null || metrics.Any(m => m.Name == meter.Name)) continue;
+            if (!double.TryParse(Attribute(bar.Value, "aria-valuenow"), NumberStyles.Float, CultureInfo.InvariantCulture, out var percentUsed)) continue;
+            percentUsed = Math.Clamp(percentUsed, 0, 100);
 
-            var used = ReadNumber(meter, "usedMicroCents");
-            var limit = ReadNumber(meter, "limitMicroCents");
-            if (used is null || limit is null) continue;
-
-            var percentUsed = limit > 0 ? Math.Clamp(used.Value / limit.Value * 100, 0, 100) : 0;
-            var isMonth = duration is null;
-
+            var reset = ResetLine.Matches(before).LastOrDefault();
             metrics.Add(new UsageMetric
             {
-                Name = name,
+                Name = meter.Name,
                 TotalQuota = 100,
                 RemainingQuota = 100 - percentUsed,
-                // fiveHour has no resetsAt until the first request opens a window.
-                ResetTime = isMonth ? periodEnd : ReadDate(meter, "resetsAt"),
-                WindowDuration = isMonth
-                    ? (periodStart is { } s && periodEnd is { } e && e > s ? e - s : TimeSpan.FromDays(30))
-                    : duration,
+                ResetTime = reset is null ? null
+                    : ParseResetTime(WebUtility.HtmlDecode(reset.Groups["title"].Value), WebUtility.HtmlDecode(reset.Groups["text"].Value), now),
+                WindowDuration = meter.Duration,
             });
-        }
-
-        if (metrics.Count == 0)
-        {
-            problem = "meters present but none parseable; keys: " + TopLevelKeys(meters);
-            metrics.Add(Placeholder("OpenCode (No Usage Data)"));
         }
         return metrics;
     }
 
+    private static string? Attribute(string tag, string name)
+    {
+        var m = Regex.Match(tag, $@"\b{Regex.Escape(name)}=""(?<v>[^""]*)""");
+        return m.Success ? WebUtility.HtmlDecode(m.Groups["v"].Value) : null;
+    }
+
+    // The title is the browser's toLocaleString(), whose day/month order depends on the
+    // WebView's locale; the relative "Resets in 5d 23h" text settles which reading is right.
+    private static DateTime? ParseResetTime(string title, string text, DateTime now)
+    {
+        DateTime? relative = null;
+        var parts = Regex.Matches(text, @"(?<n>\d+)\s*(?<u>[dhms])\b");
+        if (parts.Count > 0)
+        {
+            var span = TimeSpan.Zero;
+            foreach (Match p in parts)
+            {
+                var n = int.Parse(p.Groups["n"].Value, CultureInfo.InvariantCulture);
+                span += p.Groups["u"].Value switch
+                {
+                    "d" => TimeSpan.FromDays(n),
+                    "h" => TimeSpan.FromHours(n),
+                    "m" => TimeSpan.FromMinutes(n),
+                    _ => TimeSpan.FromSeconds(n),
+                };
+            }
+            relative = now + span;
+        }
+
+        foreach (var culture in new[] { CultureInfo.CurrentCulture, CultureInfo.GetCultureInfo("en-US"), CultureInfo.GetCultureInfo("en-GB") })
+        {
+            if (DateTime.TryParse(title, culture, DateTimeStyles.AssumeLocal, out var absolute)
+                && (relative is null || Math.Abs((absolute - relative.Value).TotalHours) < 1.5))
+            {
+                return absolute;
+            }
+        }
+        return relative;
+    }
+
     private static UsageMetric Placeholder(string name) => new() { Name = name, TotalQuota = 100, RemainingQuota = 0 };
-
-    private static string TopLevelKeys(JsonElement e) =>
-        e.ValueKind == JsonValueKind.Object ? string.Join(", ", e.EnumerateObject().Select(p => p.Name)) : e.ValueKind.ToString();
-
-    // Micro-cent amounts are bigints encoded as JSON strings; accept plain numbers too.
-    private static double? ReadNumber(JsonElement obj, string name)
-    {
-        if (!obj.TryGetProperty(name, out var v)) return null;
-        return v.ValueKind switch
-        {
-            JsonValueKind.Number => v.GetDouble(),
-            JsonValueKind.String when double.TryParse(v.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) => d,
-            _ => null,
-        };
-    }
-
-    private static DateTime? ReadDate(JsonElement obj, string name)
-    {
-        if (!obj.TryGetProperty(name, out var v)) return null;
-        if (v.ValueKind == JsonValueKind.String
-            && DateTimeOffset.TryParse(v.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dto))
-        {
-            return dto.LocalDateTime;
-        }
-        if (v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var epoch))
-        {
-            // Epoch millis vs seconds.
-            var instant = epoch > 100_000_000_000 ? DateTimeOffset.FromUnixTimeMilliseconds(epoch) : DateTimeOffset.FromUnixTimeSeconds(epoch);
-            return instant.LocalDateTime;
-        }
-        return null;
-    }
 }

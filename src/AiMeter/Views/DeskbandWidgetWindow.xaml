@@ -62,7 +62,7 @@
                 <!-- Deskband shows the Compact bars: a vertical WrapPanel fills two rows per
                      column (DeskbandColumnMaxHeight), then wraps into the next column to the
                      right, matching the floating widget's Compact look inside the taskbar. -->
-                <ItemsControl ItemsSource="{Binding Metrics}"
+                <ItemsControl x:Name="MetricsItems" ItemsSource="{Binding Metrics}"
                               ItemTemplate="{StaticResource CompactMetricRow}"
                               Grid.IsSharedSizeScope="True"
                               Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}">

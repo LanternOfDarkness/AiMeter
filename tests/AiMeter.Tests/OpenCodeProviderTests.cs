@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using AiMeter.Providers;
@@ -13,38 +12,41 @@ namespace AiMeter.Tests;
 
 public class OpenCodeProviderTests
 {
-    // Shape of the console's GET /api/go/status (schema from the OpenCode Console bundle):
-    // micro-cent amounts are bigint strings; fiveHour has no resetsAt before first use.
-    private const string StatusJson = """
-        {
-          "product": "go",
-          "cancelAtPeriodEnd": false,
-          "access": {
-            "startsAt": "2026-09-10T00:00:00Z",
-            "endsAt": "2026-10-10T00:00:00Z",
-            "cancelAtPeriodEnd": false,
-            "meters": {
-              "fiveHour": { "startsAt": "2026-09-25T18:00:00Z", "resetsAt": "2026-09-25T23:00:00Z", "limitMicroCents": "1200000000", "usedMicroCents": "48000000" },
-              "week":     { "startsAt": "2026-09-21T00:00:00Z", "resetsAt": "2026-09-28T00:00:00Z", "limitMicroCents": "3000000000", "usedMicroCents": "810000000" },
-              "month":    { "limitMicroCents": "6000000000", "usedMicroCents": "780000000" }
-            }
-          }
-        }
+    private const string Workspace = "wrk_01KX5JXZQB94WAJNBNGER9A12C";
+    private static readonly string UsageUrl = OpenCodeProvider.UsagePageUrl(Workspace);
+
+    // Go card from a live console "My usage" page (classes trimmed).
+    private const string UsageHtml = """
+        <nav><a href="/console/workspace" class="nav-avatar-link"></a><button title="Switch workspace: Default"></button>
+        <a href="/console/wrk_01KX5JXZQB94WAJNBNGER9A12C/activity" class="active" aria-current="page"><span>Activity</span></a></nav>
+        <section class="flex" aria-label="Go usage"><div><h2><span>Go</span><span class="truncate">Renews Nov 16</span></h2></div>
+        <div class="grid"><div class="min-w-0"><p class="text-foreground">Rolling</p><p class="truncate" title="11/3/2026, 3:22:58 AM">Resets in 0h 35m</p></div>
+        <div class="flex h-2 w-full gap-1" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Rolling Go usage" aria-valuenow="100" aria-valuetext="100% used"><div data-slot="progress-fill" style="flex: 100 1 0%;"></div></div>
+        <p class="text-right">100% used</p></div>
+        <div class="grid"><div class="min-w-0"><p class="text-foreground">Weekly</p><p class="truncate" title="11/9/2026, 2:00:00 AM">Resets in 5d 23h</p></div>
+        <div class="flex h-2 w-full gap-1" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Weekly Go usage" aria-valuenow="46" aria-valuetext="46% used"><div data-slot="progress-fill"></div><div data-slot="progress-remainder"></div></div>
+        <p class="text-right">46% used</p></div>
+        <div class="grid"><div class="min-w-0"><p class="text-foreground">Monthly</p><p class="truncate" title="11/16/2026, 8:37:04 PM">Resets in 13d 17h</p></div>
+        <div class="flex h-2 w-full gap-1" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Monthly Go usage" aria-valuenow="62" aria-valuetext="62% used"><div data-slot="progress-fill"></div></div>
+        <p class="text-right">62% used</p></div></section>
+        <section class="flex" aria-label="Credits"><h2><span>Credits</span></h2></section>
         """;
 
-    private const string OrgsJson = """[{"id":"org_personal","name":"Personal"},{"id":"wrk_team","name":"My Workspace"}]""";
+    private const string CreditsOnlyHtml = """<section class="flex" aria-label="Credits"><h2><span>Credits</span></h2></section>""";
+
+    // The page was captured at 02:47:xx local time on Nov 3.
+    private static readonly DateTime CapturedAt = new(2026, 11, 3, 2, 47, 0);
 
     private static OpenCodeProvider Build(FakeOpenCodeSession session, FakeOpenCodeApiClient api) =>
         new(session, api, NullLogger<OpenCodeProvider>.Instance);
 
-    private static CaptureResult Load(params CapturedResponse[] responses) =>
-        new(responses, false, OpenCodeProvider.GoPageUrl);
-
-    private static CapturedResponse Status(string? body, string org, int code = 200) =>
-        new(OpenCodeProvider.StatusApiPath, code, body, org);
-
-    private static CapturedResponse Orgs(string body = OrgsJson) =>
-        new(OpenCodeProvider.OrgsApiPath, 200, body, null);
+    private static FakeOpenCodeApiClient ApiWithUsage(string html, bool ready = true)
+    {
+        var api = new FakeOpenCodeApiClient();
+        api.Pages[OpenCodeProvider.ConsoleUrl] = new RenderedPage($"https://opencode.ai/console/{Workspace}/activity", "<html></html>", true, false);
+        api.Pages[UsageUrl] = new RenderedPage(UsageUrl, html, ready, false);
+        return api;
+    }
 
     [Fact]
     public async Task Logged_out_returns_auth_placeholder_and_makes_no_request()
@@ -55,164 +57,105 @@ public class OpenCodeProviderTests
         var metrics = await provider.GetMetricsAsync();
 
         metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Auth Required)");
-        api.CaptureCount.Should().Be(0);
+        api.NavigatedUrls.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task Parses_three_usage_meters_from_go_status()
+    public void Parses_three_meters_from_usage_page()
     {
-        var api = new FakeOpenCodeApiClient { OnCapture = _ => Load(Status(StatusJson, "wrk_team"), Orgs()) };
-        var provider = Build(new FakeOpenCodeSession { HasSession = true }, api);
+        var metrics = OpenCodeProvider.ParseUsagePage(UsageHtml, CapturedAt);
 
-        var metrics = await provider.GetMetricsAsync();
-
-        metrics.Select(m => m.Name).Should().Equal("OpenCode Rolling", "OpenCode Weekly", "OpenCode Monthly");
-
-        // used / limit → 4%, 27%, 13% used.
-        var rolling = metrics[0];
-        rolling.RemainingQuota.Should().BeApproximately(96, 0.001);
-        rolling.TotalQuota.Should().Be(100);
-        rolling.ResetTime.Should().Be(new DateTimeOffset(2026, 9, 25, 23, 0, 0, TimeSpan.Zero).LocalDateTime);
-        rolling.WindowDuration.Should().Be(TimeSpan.FromHours(5));
-
-        metrics[1].RemainingQuota.Should().BeApproximately(73, 0.001);
-
-        // Monthly resets with the subscription period.
-        var monthly = metrics[2];
-        monthly.RemainingQuota.Should().BeApproximately(87, 0.001);
-        monthly.ResetTime.Should().Be(new DateTimeOffset(2026, 10, 10, 0, 0, 0, TimeSpan.Zero).LocalDateTime);
-        monthly.WindowDuration.Should().Be(TimeSpan.FromDays(30));
-        api.CaptureCount.Should().Be(1);
+        metrics.Select(m => (m.Name, m.RemainingQuota, m.WindowDuration)).Should().Equal(
+            ("OpenCode Rolling", 0d, TimeSpan.FromHours(5)),
+            ("OpenCode Weekly", 54d, TimeSpan.FromDays(7)),
+            ("OpenCode Monthly", 38d, TimeSpan.FromDays(30)));
+        metrics.Should().OnlyContain(m => m.TotalQuota == 100);
+        metrics[0].ResetTime.Should().Be(new DateTime(2026, 11, 3, 3, 22, 58));
+        metrics[1].ResetTime.Should().Be(new DateTime(2026, 11, 9, 2, 0, 0));
+        metrics[2].ResetTime.Should().Be(new DateTime(2026, 11, 16, 20, 37, 4));
     }
 
     [Fact]
-    public void Unused_rolling_window_has_no_reset_time()
+    public void Unparseable_reset_title_falls_back_to_relative_text()
     {
-        var json = StatusJson.Replace("\"startsAt\": \"2026-09-25T18:00:00Z\", \"resetsAt\": \"2026-09-25T23:00:00Z\", ", "");
+        var html = UsageHtml.Replace("title=\"11/3/2026, 3:22:58 AM\"", "title=\"soon\"");
 
-        var metrics = OpenCodeProvider.ParseStatus(json, out var problem);
+        var metrics = OpenCodeProvider.ParseUsagePage(html, CapturedAt);
 
-        problem.Should().BeNull();
+        metrics[0].ResetTime.Should().Be(CapturedAt.AddMinutes(35));
+    }
+
+    [Fact]
+    public void Meter_without_reset_line_has_no_reset_time()
+    {
+        var html = UsageHtml.Replace("<p class=\"truncate\" title=\"11/3/2026, 3:22:58 AM\">Resets in 0h 35m</p>", "");
+
+        var metrics = OpenCodeProvider.ParseUsagePage(html, CapturedAt);
+
         metrics[0].ResetTime.Should().BeNull();
     }
 
-    [Fact]
-    public async Task Null_status_switches_to_the_org_that_has_the_subscription()
+    [Theory]
+    [InlineData("https://opencode.ai/console/wrk_ABC123/activity", null, "wrk_ABC123")]
+    [InlineData("https://opencode.ai/console", "<a href=\"/console/workspace\"></a><a href=\"/console/wrk_XYZ/go\"></a>", "wrk_XYZ")]
+    [InlineData("https://opencode.ai/console/workspace", "<a href=\"/console/workspace\"></a>", null)]
+    public void Parses_workspace_id(string url, string? html, string? expected)
     {
-        // The console defaults to the personal org (null status); the plan lives in wrk_team.
-        // It reads the selection from localStorage as a JSON string, so the raw attempt is ignored.
-        var api = new FakeOpenCodeApiClient();
-        api.OnCapture = a =>
-        {
-            var selected = a.LocalStorage.TryGetValue(OpenCodeProvider.SelectedOrgStorageKey, out var v) && v == "\"wrk_team\""
-                ? "wrk_team" : "org_personal";
-            return Load(Status(selected == "wrk_team" ? StatusJson : "null", selected), Orgs());
-        };
-        var provider = Build(new FakeOpenCodeSession { HasSession = true }, api);
-
-        var metrics = await provider.GetMetricsAsync();
-
-        metrics.Select(m => m.Name).Should().Equal("OpenCode Rolling", "OpenCode Weekly", "OpenCode Monthly");
-        api.LocalStorage[OpenCodeProvider.SelectedOrgStorageKey].Should().Be("\"wrk_team\"", "the working org stays selected for later polls");
-
-        var loadsAfterSearch = api.CaptureCount;
-        await provider.GetMetricsAsync();
-        api.CaptureCount.Should().Be(loadsAfterSearch + 1, "once selected, a poll is a single page load");
+        OpenCodeProvider.ParseWorkspaceId(url, html).Should().Be(expected);
     }
 
     [Fact]
-    public async Task No_subscription_in_any_org_restores_selection_and_shows_placeholder()
+    public async Task Finds_workspace_once_then_reads_its_usage_page()
     {
-        var api = new FakeOpenCodeApiClient();
-        api.LocalStorage[OpenCodeProvider.SelectedOrgStorageKey] = "\"org_personal\"";
-        api.OnCapture = a =>
-        {
-            var stored = a.LocalStorage.GetValueOrDefault(OpenCodeProvider.SelectedOrgStorageKey);
-            var selected = stored?.Contains("wrk_team") == true ? "wrk_team" : "org_personal";
-            return Load(Status("null", selected), Orgs());
-        };
-        var provider = Build(new FakeOpenCodeSession { HasSession = true }, api);
+        var api = ApiWithUsage(UsageHtml);
+        var session = new FakeOpenCodeSession { HasSession = true };
+        var provider = Build(session, api);
+
+        var metrics = await provider.GetMetricsAsync();
+        await provider.GetMetricsAsync();
+
+        metrics.Select(m => m.Name).Should().Equal("OpenCode Rolling", "OpenCode Weekly", "OpenCode Monthly");
+        api.NavigatedUrls.Should().Equal(OpenCodeProvider.ConsoleUrl, UsageUrl, UsageUrl);
+        session.StatusNote.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Rendered_page_without_go_card_means_no_subscription()
+    {
+        var api = ApiWithUsage(CreditsOnlyHtml);
+        var session = new FakeOpenCodeSession { HasSession = true };
+        var provider = Build(session, api);
 
         var metrics = await provider.GetMetricsAsync();
 
         metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (No Subscription)");
-        api.LocalStorage[OpenCodeProvider.SelectedOrgStorageKey].Should().Be("\"org_personal\"");
-
-        // Backs off: the next poll doesn't repeat the org search.
-        var loads = api.CaptureCount;
-        await provider.GetMetricsAsync();
-        api.CaptureCount.Should().Be(loads + 1);
-    }
-
-    [Fact]
-    public async Task No_console_subscription_falls_back_to_legacy_workspace_page()
-    {
-        // Slice of the old site's workspace page hydration payload (captured from a live session).
-        const string legacyHtml =
-            "…rollingUsage:$R[31]={status:\"ok\",resetInSec:13824,usagePercent:4}," +
-            "weeklyUsage:$R[32]={status:\"ok\",resetInSec:122025,usagePercent:27}," +
-            "monthlyUsage:$R[33]={status:\"ok\",resetInSec:2588405,usagePercent:13}…" +
-            "…billing:$R[36]={monthlyUsage:null,subscription:null}…";
-        var api = new FakeOpenCodeApiClient
-        {
-            OnCapture = _ => Load(Status("null", "wrk_team"), Orgs("""[{"id":"wrk_team","name":"My Workspace"}]""")),
-        };
-        api.Pages["https://opencode.ai/workspace/wrk_team/go"] = legacyHtml;
-        var provider = Build(new FakeOpenCodeSession { HasSession = true }, api);
-
-        var metrics = await provider.GetMetricsAsync();
-
-        api.NavigatedUrls.Should().Equal("https://opencode.ai/workspace/wrk_team/go");
-        metrics.Select(m => (m.Name, m.RemainingQuota)).Should().Equal(
-            ("OpenCode Rolling", 96d), ("OpenCode Weekly", 73d), ("OpenCode Monthly", 87d));
-    }
-
-    [Fact]
-    public async Task No_subscription_sets_account_note_and_a_later_plan_clears_it()
-    {
-        var hasPlan = false;
-        var api = new FakeOpenCodeApiClient
-        {
-            OnCapture = _ => Load(Status(hasPlan ? StatusJson : "null", "wrk_team"), Orgs("""[{"id":"wrk_team","name":"My Workspace"}]""")),
-        };
-        var session = new FakeOpenCodeSession { HasSession = true };
-        var provider = Build(session, api);
-
-        await provider.GetMetricsAsync();
         session.StatusNote.Should().Be(OpenCodeProvider.NoSubscriptionNote);
 
-        hasPlan = true;
+        api.Pages[UsageUrl] = new RenderedPage(UsageUrl, UsageHtml, true, false);
         await provider.GetMetricsAsync();
         session.StatusNote.Should().BeNull();
     }
 
     [Fact]
-    public async Task Legacy_page_check_backs_off_until_the_next_login()
+    public async Task Go_card_still_loading_is_an_error_not_no_subscription()
     {
-        var api = new FakeOpenCodeApiClient
-        {
-            OnCapture = _ => Load(Status("null", "wrk_team"), Orgs("""[{"id":"wrk_team","name":"My Workspace"}]""")),
-        };
+        // Skeleton Go card (no progress bars yet) beside a filled Credits card.
+        const string loading = """<section aria-label="Go usage"><div aria-busy="true"><p>Rolling</p><div class="h-2"></div></div></section>""" + CreditsOnlyHtml;
         var session = new FakeOpenCodeSession { HasSession = true };
-        var provider = Build(session, api);
+        var provider = Build(session, ApiWithUsage(loading));
 
-        await provider.GetMetricsAsync();
-        await provider.GetMetricsAsync();
-        api.NavigatedUrls.Should().HaveCount(1, "a miss on the old site is not retried every poll");
+        var metrics = await provider.GetMetricsAsync();
 
-        session.Store(new[] { ("c", "v") });
-        await provider.GetMetricsAsync();
-        api.NavigatedUrls.Should().HaveCount(2, "a fresh login retries straight away");
+        metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Error Fetching)");
+        session.StatusNote.Should().Be(OpenCodeProvider.ErrorNote);
     }
 
     [Fact]
     public async Task Bounced_to_login_clears_session()
     {
         var session = new FakeOpenCodeSession { HasSession = true };
-        var api = new FakeOpenCodeApiClient
-        {
-            OnCapture = _ => new CaptureResult(Array.Empty<CapturedResponse>(), true, "https://opencode.ai/console/login?next=%2Fconsole%2Fgo"),
-        };
+        var api = new FakeOpenCodeApiClient();
+        api.Pages[OpenCodeProvider.ConsoleUrl] = new RenderedPage("https://opencode.ai/console/login", null, false, true);
         var provider = Build(session, api);
 
         var metrics = await provider.GetMetricsAsync();
@@ -222,15 +165,18 @@ public class OpenCodeProviderTests
     }
 
     [Fact]
-    public async Task Nothing_captured_surfaces_error_and_keeps_session()
+    public async Task Page_that_never_renders_surfaces_error_keeps_session_and_rediscovers_workspace()
     {
         var session = new FakeOpenCodeSession { HasSession = true };
-        var api = new FakeOpenCodeApiClient { OnCapture = _ => Load() };
+        var api = ApiWithUsage("<html></html>", ready: false);
         var provider = Build(session, api);
 
         var metrics = await provider.GetMetricsAsync();
+        await provider.GetMetricsAsync();
 
         metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Error Fetching)");
         session.HasSession.Should().BeTrue();
+        session.StatusNote.Should().Be(OpenCodeProvider.ErrorNote);
+        api.NavigatedUrls.Should().Equal(OpenCodeProvider.ConsoleUrl, UsageUrl, OpenCodeProvider.ConsoleUrl, UsageUrl);
     }
 }
