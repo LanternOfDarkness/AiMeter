@@ -192,4 +192,9 @@ See [docs/design.md](docs/design.md) for the full design document.
 
 ## License
 
-See repository for license details.
+[MIT](LICENSE) © 2026 VeLab
+
+## Privacy
+
+AiMeter collects nothing; all data stays on your PC. See the
+[privacy policy](https://lanternofdarkness.github.io/AiMeter/privacy/).

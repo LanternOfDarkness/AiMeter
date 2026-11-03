@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AiMeter</title>
+<meta name="description" content="A small Windows widget that keeps your Claude and OpenCode usage limits and reset timers in view.">
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --text: #16181d;
+    --muted: #555b66;
+    --line: #dfe2e8;
+    --accent: #0b8fa3;
+    --accent-text: #ffffff;
+    --shot-bg: #1c1c1c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111316;
+      --surface: #191c20;
+      --text: #e9ebef;
+      --muted: #a2a8b3;
+      --line: #2a2e35;
+      --accent: #22c3da;
+      --accent-text: #0b1214;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; }
+  .brand { font-weight: 600; font-size: 18px; }
+  nav a { color: var(--muted); text-decoration: none; margin-left: 20px; }
+  nav a:hover { color: var(--text); }
+  .hero { padding: 56px 0 32px; }
+  h1 { font-size: clamp(32px, 6vw, 48px); line-height: 1.15; margin: 0 0 16px; max-width: 16ch; }
+  .lede { color: var(--muted); font-size: 18px; max-width: 58ch; margin: 0 0 28px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn {
+    display: inline-block; padding: 11px 20px; border-radius: 8px;
+    background: var(--accent); color: var(--accent-text);
+    font-weight: 600; text-decoration: none;
+  }
+  .btn.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .note { color: var(--muted); font-size: 14px; margin-top: 12px; }
+  figure { margin: 0; }
+  .shot {
+    background: var(--shot-bg); border-radius: 10px; padding: 12px;
+    overflow-x: auto; border: 1px solid var(--line);
+  }
+  .shot img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+  figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+  section { padding: 40px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 24px; margin: 0 0 20px; }
+  .layouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+  .layouts h3 { font-size: 16px; margin: 12px 0 4px; }
+  .layouts p { margin: 0; color: var(--muted); font-size: 15px; }
+  ul.features { margin: 0; padding-left: 20px; columns: 2 300px; column-gap: 40px; }
+  ul.features li { margin-bottom: 10px; break-inside: avoid; }
+  ul.features strong { font-weight: 600; }
+  footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="brand">AiMeter</span>
+    <nav>
+      <a href="https://github.com/LanternOfDarkness/AiMeter">GitHub</a>
+      <a href="privacy/">Privacy</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>Your AI usage limits, always in view.</h1>
+    <p class="lede">AiMeter is a small Windows widget that shows how much of your Claude and
+      OpenCode quota is left and when it resets. It sits on top of other windows, over the
+      taskbar, or right inside it.</p>
+    <div class="actions">
+      <a class="btn" href="https://github.com/LanternOfDarkness/AiMeter/releases/latest">Download for Windows</a>
+      <a class="btn secondary" href="https://github.com/LanternOfDarkness/AiMeter">View source</a>
+    </div>
+    <p class="note">Windows 11 24H2 or later, x64 · Free and open source (MIT)</p>
+  </div>
+
+  <figure>
+    <div class="shot"><img src="deskband-mode.png" width="1082" height="72" alt="AiMeter Deskband layout: Claude Session 89%, Claude Weekly 67%, OpenCode Rolling, Weekly and Monthly bars with reset times, shown inside the Windows taskbar"></div>
+    <figcaption>Deskband layout: the bars sit inside the Windows 11 taskbar.</figcaption>
+  </figure>
+
+  <section>
+    <h2>Three layouts</h2>
+    <div class="layouts">
+      <figure>
+        <div class="shot"><img src="compact-mode.png" alt="Compact layout: a slim strip of thin quota bars with percentages and reset labels"></div>
+        <h3>Compact</h3>
+        <p>A slim, draggable strip of bars with percent left and a short reset label.</p>
+      </figure>
+      <figure>
+        <div class="shot"><img src="taskbar-mode.png" alt="Taskbar layout: vertical fill columns docked over the bottom of the screen"></div>
+        <h3>Taskbar</h3>
+        <p>Thin vertical columns docked over the taskbar, with a countdown on each.</p>
+      </figure>
+      <figure>
+        <div class="shot"><img src="settings.png" alt="AiMeter settings window, General tab with colors, alerts and accounts"></div>
+        <h3>Settings</h3>
+        <p>Choose metrics, colors, alerts, opacity and accounts.</p>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Features</h2>
+    <ul class="features">
+      <li><strong>Claude and OpenCode together.</strong> Session, weekly and Extra Usage limits, plus OpenCode Go rolling, weekly and monthly usage.</li>
+      <li><strong>Live reset countdowns</strong>, shown in days and hours for long windows.</li>
+      <li><strong>Color modes:</strong> fixed thresholds, a smooth gradient, or pace (quota left versus time to reset).</li>
+      <li><strong>Notifications</strong> when a quota runs low, runs out or resets.</li>
+      <li><strong>Game friendly.</strong> Stays above borderless-fullscreen games and lets clicks pass through while you play.</li>
+      <li><strong>Tray app</strong> that can launch at sign-in, with adjustable opacity and hover dimming.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Private by design</h2>
+    <p class="lede" style="margin:0">You sign in on the providers' own pages. Your session and settings
+      stay on your PC. AiMeter has no server and no telemetry, and it connects only to
+      claude.ai and opencode.ai. <a href="privacy/" style="color:var(--accent)">Read the privacy policy</a>.</p>
+  </section>
+
+  <footer>
+    <p>© 2026 VeLab · <a href="https://github.com/LanternOfDarkness/AiMeter/blob/master/LICENSE">MIT License</a> · <a href="privacy/">Privacy policy</a> · <a href="https://github.com/LanternOfDarkness/AiMeter/issues">Support</a></p>
+    <p>AiMeter is an independent project, not affiliated with or endorsed by Anthropic or OpenCode.
+      Claude is a trademark of Anthropic.</p>
+  </footer>
+</div>
+</body>
+</html>

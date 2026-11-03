@@ -1,0 +1,7 @@
+title: AiMeter
+description: Your AI usage limits, always in view on Windows.
+exclude:
+  - plan.md
+  - design.md
+  - plans/
+  - todo
