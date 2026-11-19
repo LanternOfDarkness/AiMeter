@@ -65,7 +65,7 @@
             <TextBlock Text="{Binding StatusText}" Foreground="#AAAAAA" FontSize="12" TextWrapping="Wrap" />
 
             <ProgressBar Height="6" Margin="0,8,0,0" Minimum="0" Maximum="1"
-                         Value="{Binding DownloadFraction}"
+                         Value="{Binding DownloadFraction, Mode=OneWay}"
                          Background="#2E2E30" Foreground="#2ECC71" BorderThickness="0"
                          Visibility="{Binding IsDownloading, Converter={StaticResource BoolToVisibilityConverter}}">
                 <ProgressBar.Style>

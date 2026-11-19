@@ -61,11 +61,10 @@
                     </TextBlock>
                     <TextBlock Visibility="{Binding IsStale, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <TextBlock.Text>
-                            <MultiBinding StringFormat="⚠ Not updated — last successful update {0}">
-                                <MultiBinding Converter="{StaticResource StaleAgeConverter}">
-                                    <Binding Path="LastUpdatedUtc" />
-                                    <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
-                                </MultiBinding>
+                            <MultiBinding Converter="{StaticResource StaleAgeConverter}"
+                                          StringFormat="⚠ Not updated — last successful update {0}">
+                                <Binding Path="LastUpdatedUtc" />
+                                <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
                             </MultiBinding>
                         </TextBlock.Text>
                     </TextBlock>
@@ -215,11 +214,10 @@
                     </TextBlock>
                     <TextBlock Visibility="{Binding IsStale, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <TextBlock.Text>
-                            <MultiBinding StringFormat="⚠ Not updated — last successful update {0}">
-                                <MultiBinding Converter="{StaticResource StaleAgeConverter}">
-                                    <Binding Path="LastUpdatedUtc" />
-                                    <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
-                                </MultiBinding>
+                            <MultiBinding Converter="{StaticResource StaleAgeConverter}"
+                                          StringFormat="⚠ Not updated — last successful update {0}">
+                                <Binding Path="LastUpdatedUtc" />
+                                <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
                             </MultiBinding>
                         </TextBlock.Text>
                     </TextBlock>
