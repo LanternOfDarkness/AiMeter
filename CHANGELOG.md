@@ -12,6 +12,11 @@ All notable changes to AiMeter are documented in this file.
   refresh or by logout / session expiry / no subscription.
 - **Open logs folder** — Settings → General → Diagnostics now has a button that opens
   `%AppData%\AiMeter\logs` in Explorer, creating the folder if needed.
+- **Updates** — AiMeter checks GitHub Releases for a newer stable build (~15 s after launch,
+  then daily), notifies from the tray, and downloads plus installs `AiMeter.exe` only after
+  **Download & install** is pressed. The download is verified by SHA-256 and the embedded
+  version; the previous exe is kept as `AiMeter.exe.old` until the new build starts, and a
+  failed replace rolls back. Manual check from the tray menu or Settings → General → Updates.
 
 ## [2.0.2] - 2026-11-19
 

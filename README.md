@@ -42,6 +42,8 @@ follow-up (see [docs/design.md](docs/design.md)).
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
+AiMeter can update itself — see [Updates](#updates).
+
 ## What's new in v2.0.2
 
 - **OpenCode rolling limit is back** — the console renamed its 5-hour meter to
@@ -171,6 +173,24 @@ On first run, open **Settings → General → Accounts** and log into Claude.ai 
 fetch your usage limits — each provider has its own login row. Authentication runs in an
 embedded browser; only a lightweight "logged in" marker is stored locally (the real session
 lives in the WebView2 profile). Log into just the providers you use.
+
+## Updates
+
+- AiMeter checks GitHub Releases for a newer stable release about 15 seconds after launch (so
+  startup is not delayed) and at most once every 24 hours while running.
+- **Nothing is downloaded until you approve it.** The tray shows an "Update to vX.Y.Z…" item
+  and a balloon; the update window only downloads after **Download & install**. Manual checks:
+  the tray menu's **Check for updates…**, or Settings → General → Updates → **Check now**.
+- The downloaded `AiMeter.exe` is verified against the release's SHA-256 **and** its embedded
+  version before the running exe is replaced. The previous file is kept as `AiMeter.exe.old`
+  and deleted once the new build starts. Failures roll back to the old exe.
+- Works for the portable exe and the per-user installer. Debug builds, `bin`
+  (framework-dependent) builds and Microsoft Store/MSIX packages never self-update — they
+  offer the GitHub release page instead.
+- If a new build does not start: delete `AiMeter.exe`, then rename `AiMeter.exe.old` back to
+  `AiMeter.exe`. There is no automatic post-launch health check yet.
+- Publishing a release (version bump, SHA-256 asset, tag/digest rules): see
+  [docs/releasing.md](docs/releasing.md).
 
 ## Configuration
 
