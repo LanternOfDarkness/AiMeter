@@ -4,6 +4,8 @@ All notable changes to AiMeter are documented in this file.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-19
+
 ### Added
 - **App version in every log line** — entries now read
   `2026-11-19 05:34:26 [v2.1.0+1de1699] [Warning] [AiMeter.Providers.OpenCodeProvider] …`

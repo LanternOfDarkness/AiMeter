@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AiMeter</title>
 <meta name="description" content="A small Windows widget that keeps your Claude and OpenCode usage limits and reset timers in view.">
+<meta property="og:title" content="AiMeter">
+<meta property="og:description" content="Your AI usage limits, always in view on Windows.">
+<meta property="og:image" content="https://lanternofdarkness.github.io/AiMeter/deskband-mode.png">
 <style>
   :root {
     --bg: #f7f8fa;
@@ -12,9 +15,11 @@
     --text: #16181d;
     --muted: #555b66;
     --line: #dfe2e8;
-    --accent: #0b8fa3;
+    --accent: #0b7f91;
+    --accent-hover: #096b7a;
     --accent-text: #ffffff;
     --shot-bg: #1c1c1c;
+    --code-bg: #eef0f3;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -24,71 +29,126 @@
       --muted: #a2a8b3;
       --line: #2a2e35;
       --accent: #22c3da;
+      --accent-hover: #4fd2e4;
       --accent-text: #0b1214;
+      --code-bg: #20242a;
     }
   }
   * { box-sizing: border-box; }
+  html { scroll-padding-top: 72px; }
   body {
     margin: 0;
     background: var(--bg);
     color: var(--text);
     font: 16px/1.6 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   }
-  .wrap { max-width: 960px; margin: 0 auto; padding: 0 16px; }
-  header { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; }
-  .brand { font-weight: 600; font-size: 18px; }
-  nav a { color: var(--muted); text-decoration: none; margin-left: 20px; }
-  nav a:hover { color: var(--text); }
-  .hero { padding: 56px 0 32px; }
-  h1 { font-size: clamp(32px, 6vw, 48px); line-height: 1.15; margin: 0 0 16px; max-width: 16ch; }
+  a { color: var(--accent); }
+  a:focus-visible, .btn:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 16px; }
+
+  /* Header */
+  .top { position: sticky; top: 0; z-index: 10; background: var(--bg); border-bottom: 1px solid var(--line); }
+  .top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 56px; }
+  .brand { font-weight: 600; font-size: 18px; color: var(--text); text-decoration: none; }
+  .top nav { display: flex; gap: 20px; overflow-x: auto; }
+  .top nav a { color: var(--muted); text-decoration: none; white-space: nowrap; font-size: 15px; }
+  .top nav a:hover { color: var(--text); }
+  @media (max-width: 560px) { .top nav .opt { display: none; } }
+
+  /* Hero */
+  .hero { padding: 64px 0 40px; }
+  h1 { font-size: clamp(32px, 6vw, 50px); line-height: 1.12; margin: 0 0 16px; max-width: 15ch; letter-spacing: -0.01em; }
   .lede { color: var(--muted); font-size: 18px; max-width: 58ch; margin: 0 0 28px; }
   .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
   .btn {
-    display: inline-block; padding: 11px 20px; border-radius: 8px;
-    background: var(--accent); color: var(--accent-text);
-    font-weight: 600; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 20px;
+    border-radius: 8px; background: var(--accent); color: var(--accent-text);
+    font-weight: 600; text-decoration: none; transition: background-color .15s;
   }
+  .btn:hover { background: var(--accent-hover); }
   .btn.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
-  .note { color: var(--muted); font-size: 14px; margin-top: 12px; }
+  .btn.secondary:hover { background: var(--surface); }
+  .btn svg { width: 18px; height: 18px; flex: none; }
+  .meta { color: var(--muted); font-size: 14px; margin: 14px 0 0; }
+  .meta a { color: var(--muted); }
+
   figure { margin: 0; }
-  .shot {
-    background: var(--shot-bg); border-radius: 10px; padding: 12px;
-    overflow-x: auto; border: 1px solid var(--line);
-  }
+  .shot { background: var(--shot-bg); border-radius: 10px; padding: 12px; overflow-x: auto; border: 1px solid var(--line); }
   .shot img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
   figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
-  section { padding: 40px 0; border-top: 1px solid var(--line); }
-  h2 { font-size: 24px; margin: 0 0 20px; }
-  .layouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
-  .layouts h3 { font-size: 16px; margin: 12px 0 4px; }
+
+  /* Sections */
+  section { padding: 56px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 26px; line-height: 1.25; margin: 0 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 28px; max-width: 60ch; }
+  h3 { font-size: 17px; margin: 0 0 4px; }
+
+  ol.steps { list-style: none; counter-reset: step; margin: 0; padding: 0; display: grid; gap: 28px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  ol.steps li { counter-increment: step; position: relative; padding-left: 48px; }
+  ol.steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 0;
+    width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line);
+    display: grid; place-items: center; font-weight: 600; font-size: 15px; color: var(--accent);
+  }
+  ol.steps p { margin: 0; color: var(--muted); font-size: 15px; }
+  kbd { font: 13px "Cascadia Mono", Consolas, monospace; background: var(--code-bg); border-radius: 4px; padding: 1px 5px; }
+
+  .layouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 32px 24px; }
+  .layouts figure h3 { margin-top: 14px; }
   .layouts p { margin: 0; color: var(--muted); font-size: 15px; }
-  ul.features { margin: 0; padding-left: 20px; columns: 2 300px; column-gap: 40px; }
-  ul.features li { margin-bottom: 10px; break-inside: avoid; }
-  ul.features strong { font-weight: 600; }
+
+  ul.features { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px 40px; }
+  ul.features p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  ul.news { margin: 0; padding-left: 20px; max-width: 70ch; }
+  ul.news li { margin-bottom: 10px; }
+  ul.news strong { font-weight: 600; }
+
+  .faq { max-width: 72ch; }
+  details { border-bottom: 1px solid var(--line); }
+  details:first-of-type { border-top: 1px solid var(--line); }
+  summary { cursor: pointer; padding: 14px 28px 14px 0; font-weight: 600; list-style: none; position: relative; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: ""; position: absolute; right: 6px; top: 50%; width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: translateY(-70%) rotate(45deg); transition: transform .15s; }
+  details[open] summary::after { transform: translateY(-30%) rotate(-135deg); }
+  details p { margin: 0 0 16px; color: var(--muted); }
+
   footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
   footer a { color: var(--muted); }
+  footer p { margin: 0 0 6px; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <span class="brand">AiMeter</span>
-    <nav>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#">AiMeter</a>
+    <nav aria-label="Main">
+      <a href="#start">Get started</a>
+      <a class="opt" href="#layouts">Layouts</a>
+      <a class="opt" href="#features">Features</a>
+      <a href="#faq">FAQ</a>
       <a href="https://github.com/LanternOfDarkness/AiMeter">GitHub</a>
-      <a href="privacy/">Privacy</a>
     </nav>
-  </header>
+  </div>
+</header>
 
+<main class="wrap">
   <div class="hero">
     <h1>Your AI usage limits, always in view.</h1>
     <p class="lede">AiMeter is a small Windows widget that shows how much of your Claude and
       OpenCode quota is left and when it resets. It sits on top of other windows, over the
       taskbar, or right inside it.</p>
     <div class="actions">
-      <a class="btn" href="https://github.com/LanternOfDarkness/AiMeter/releases/latest">Download for Windows</a>
+      <a class="btn" id="download" href="https://github.com/LanternOfDarkness/AiMeter/releases/latest/download/AiMeter.exe">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
+        Download for Windows
+      </a>
       <a class="btn secondary" href="https://github.com/LanternOfDarkness/AiMeter">View source</a>
     </div>
-    <p class="note">Windows 11 24H2 or later, x64 · Free and open source (MIT)</p>
+    <p class="meta"><span id="release">Latest release</span> · single portable .exe · Windows 11 24H2+, x64 ·
+      <a id="notes" href="https://github.com/LanternOfDarkness/AiMeter/releases/latest">release notes</a></p>
   </div>
 
   <figure>
@@ -96,8 +156,31 @@
     <figcaption>Deskband layout: the bars sit inside the Windows 11 taskbar.</figcaption>
   </figure>
 
-  <section>
+  <section id="start">
+    <h2>Get started in a minute</h2>
+    <p class="sub">No installer. AiMeter is one file you can keep anywhere, and it updates itself.</p>
+    <ol class="steps">
+      <li>
+        <h3>Download and run</h3>
+        <p>Save <kbd>AiMeter.exe</kbd> to a folder you can write to, such as Documents or a
+          Tools folder, and open it. It starts in the system tray.</p>
+      </li>
+      <li>
+        <h3>Allow it the first time</h3>
+        <p>The exe isn't code-signed yet, so Windows may say "Windows protected your PC".
+          Click <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+      </li>
+      <li>
+        <h3>Sign in to your providers</h3>
+        <p>Open <strong>Settings → General → Accounts</strong> and log into Claude, OpenCode or
+          both. Your bars appear after the first refresh.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section id="layouts">
     <h2>Three layouts</h2>
+    <p class="sub">Switch any time from the widget's menu or in Settings.</p>
     <div class="layouts">
       <figure>
         <div class="shot"><img src="compact-mode.png" alt="Compact layout: a slim strip of thin quota bars with percentages and reset labels"></div>
@@ -117,31 +200,103 @@
     </div>
   </section>
 
-  <section>
+  <section id="features">
     <h2>Features</h2>
     <ul class="features">
-      <li><strong>Claude and OpenCode together.</strong> Session, weekly and Extra Usage limits, plus OpenCode Go rolling, weekly and monthly usage.</li>
-      <li><strong>Live reset countdowns</strong>, shown in days and hours for long windows.</li>
-      <li><strong>Color modes:</strong> fixed thresholds, a smooth gradient, or pace (quota left versus time to reset).</li>
-      <li><strong>Notifications</strong> when a quota runs low, runs out or resets.</li>
-      <li><strong>Game friendly.</strong> Stays above borderless-fullscreen games and lets clicks pass through while you play.</li>
-      <li><strong>Offline-safe last-known values.</strong> If a provider can't be reached, the bars keep their last numbers with a clear stale warning. The General settings tab also has an Open logs folder button for diagnostics.</li>
-      <li><strong>Tray app</strong> that can launch at sign-in, with adjustable opacity and hover dimming.</li>
+      <li><h3>Claude and OpenCode together</h3><p>Claude session, weekly and Extra Usage limits, plus OpenCode Go rolling, weekly and monthly usage.</p></li>
+      <li><h3>Live reset countdowns</h3><p>Every bar shows when it resets, in days and hours for long windows.</p></li>
+      <li><h3>Color modes</h3><p>Fixed thresholds, a smooth gradient, or pace: quota left versus time to reset.</p></li>
+      <li><h3>Notifications</h3><p>Get told when a quota runs low, runs out or resets.</p></li>
+      <li><h3>Game friendly</h3><p>Stays above borderless-fullscreen games and lets clicks pass through while you play.</p></li>
+      <li><h3>Works offline</h3><p>If a provider can't be reached, the bars keep their last numbers with a clear stale warning.</p></li>
+      <li><h3>Updates you approve</h3><p>New versions show up in the tray. Nothing downloads until you say so, and every download is verified.</p></li>
+      <li><h3>Stays out of the way</h3><p>Tray app with launch at sign-in, adjustable opacity and hover dimming.</p></li>
     </ul>
   </section>
 
-  <section>
-    <h2>Private by design</h2>
-    <p class="lede" style="margin:0">You sign in on the providers' own pages. Your session and settings
-      stay on your PC. AiMeter has no server and no telemetry, and it connects only to
-      claude.ai and opencode.ai. <a href="privacy/" style="color:var(--accent)">Read the privacy policy</a>.</p>
+  <section id="news">
+    <h2>What's new in 2.1.0</h2>
+    <p class="sub">Released November 19, 2026. <a href="https://github.com/LanternOfDarkness/AiMeter/blob/master/CHANGELOG.md">Full changelog</a></p>
+    <ul class="news">
+      <li><strong>Updates from the tray</strong>, downloaded only after you approve them and verified before install.</li>
+      <li><strong>Last known values when offline</strong>, dimmed with a warning and their age.</li>
+      <li><strong>OpenCode usage works again</strong> after the OpenCode Console redesign.</li>
+      <li><strong>No more stuck startups</strong>: if the embedded browser hangs, AiMeter retries on its own.</li>
+      <li><strong>Aligned labels</strong> with a monospaced widget font, and an Open logs folder button for troubleshooting.</li>
+    </ul>
   </section>
 
-  <footer>
+  <section id="faq">
+    <h2>Questions</h2>
+    <div class="faq">
+      <details>
+        <summary>Why does Windows warn me when I open it?</summary>
+        <p>AiMeter isn't code-signed yet, so Microsoft Defender SmartScreen doesn't recognize
+          new versions. Click <strong>More info → Run anyway</strong>. You can check the file
+          against the SHA-256 hash on the release page with
+          <kbd>Get-FileHash AiMeter.exe</kbd>.</p>
+      </details>
+      <details>
+        <summary>What do I need to run it?</summary>
+        <p>Windows 11 24H2 or later on x64, the .NET 10 Desktop Runtime (Windows offers to
+          install it if it's missing), and the WebView2 Runtime, which Windows 11 already
+          includes.</p>
+      </details>
+      <details>
+        <summary>Does AiMeter see my password?</summary>
+        <p>No. You sign in on Claude's and OpenCode's own login pages inside an embedded
+          browser. The session stays in that browser's profile on your PC, and AiMeter only
+          reads your usage numbers through it.</p>
+      </details>
+      <details>
+        <summary>Where are my settings stored?</summary>
+        <p>In <kbd>%AppData%\AiMeter</kbd>: settings, the browser profile, the last known
+          usage values and daily logs. Delete the folder to reset everything.</p>
+      </details>
+      <details>
+        <summary>How do updates work?</summary>
+        <p>AiMeter checks GitHub about once a day. When a new version is out, it appears in the
+          tray menu. Pressing <strong>Download &amp; install</strong> downloads it, checks its
+          hash and version, and swaps the exe, keeping the old one as a backup. You can turn
+          checks off in Settings.</p>
+      </details>
+      <details>
+        <summary>Something stopped updating. What now?</summary>
+        <p>Open Settings → General → Diagnostics → <strong>Open logs folder</strong> and attach
+          today's log to a <a href="https://github.com/LanternOfDarkness/AiMeter/issues">GitHub
+          issue</a>. Each line includes the app version.</p>
+      </details>
+    </div>
+  </section>
+
+  <section id="privacy">
+    <h2>Private by design</h2>
+    <p class="sub" style="margin:0">Your session and settings stay on your PC. AiMeter has no
+      server and no telemetry, and it connects only to claude.ai, opencode.ai and GitHub for
+      update checks. <a href="privacy/">Read the privacy policy</a>.</p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
     <p>© 2026 VeLab · <a href="https://github.com/LanternOfDarkness/AiMeter/blob/master/LICENSE">MIT License</a> · <a href="privacy/">Privacy policy</a> · <a href="https://github.com/LanternOfDarkness/AiMeter/issues">Support</a></p>
     <p>AiMeter is an independent project, not affiliated with or endorsed by Anthropic or OpenCode.
       Claude is a trademark of Anthropic.</p>
-  </footer>
-</div>
+  </div>
+</footer>
+
+<script>
+  // Fill in the latest version and size; the static text and links work without it.
+  fetch("https://api.github.com/repos/LanternOfDarkness/AiMeter/releases/latest")
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function (release) {
+      var exe = (release.assets || []).find(function (a) { return a.name === "AiMeter.exe"; });
+      var text = "Version " + release.tag_name.replace(/^v/, "");
+      if (exe) text += " · " + (exe.size / 1048576).toFixed(1) + " MB";
+      document.getElementById("release").textContent = text;
+      document.getElementById("notes").href = release.html_url;
+    })
+    .catch(function () {});
+</script>
 </body>
 </html>

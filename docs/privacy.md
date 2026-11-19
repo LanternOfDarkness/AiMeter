@@ -35,10 +35,7 @@ page, which runs inside the app's embedded Microsoft Edge WebView2 browser.
 
 ### Storage location
 
-- Installer version: `%AppData%\AiMeter\`
-- Microsoft Store version: the app's private package data folder
-  (`%LocalAppData%\Packages\<AiMeter package>\`), which Windows removes when you uninstall
-  the app.
+All of the above lives in `%AppData%\AiMeter\`.
 
 ## Network connections
 
@@ -65,8 +62,8 @@ AiMeter does not sell, share or send your data to the developer or to any third 
 ## Deleting your data
 
 - Sign out of an account in AiMeter's settings to remove its session.
-- Uninstall the app. For the installer version, also delete the `%AppData%\AiMeter`
-  folder to remove settings, logs and sessions.
+- Delete `AiMeter.exe` (or uninstall it, if you used the installer), then delete the
+  `%AppData%\AiMeter` folder to remove settings, logs and sessions.
 
 ## Children
 
