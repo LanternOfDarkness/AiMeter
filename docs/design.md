@@ -27,7 +27,7 @@ and others.
 -   Always-visible usage information
 -   Extensible provider architecture
 -   Highly customizable dashboard
--   Automatic updates without user interaction
+-   Consent-based update checks and in-place updates
 
 ## High-Level Architecture
 
