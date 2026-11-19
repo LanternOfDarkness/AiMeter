@@ -36,6 +36,7 @@ public partial class App : Application
                 services.AddSingleton<IUpdateDownloader, UpdateDownloader>();
                 services.AddSingleton<IProcessLauncher, ProcessLauncher>();
                 services.AddSingleton<IUpdateInstaller, UpdateInstaller>();
+                services.AddSingleton<IUiDispatcher, WpfUiDispatcher>();
 
                 // Register Managers
                 services.AddSingleton<IProviderManager, ProviderManager>();
@@ -56,10 +57,12 @@ public partial class App : Application
                 services.AddSingleton<TrayViewModel>();
                 services.AddSingleton<WidgetViewModel>();
                 services.AddSingleton<SettingsViewModel>();
+                services.AddSingleton<UpdateViewModel>();
 
                 // Register Views
                 services.AddSingleton<Views.WidgetWindow>();
                 services.AddSingleton<Views.SettingsWindow>();
+                services.AddSingleton<Views.UpdateWindow>();
                 services.AddTransient<Views.AuthWindow>();
                 services.AddTransient<Views.OpenCodeAuthWindow>();
             })
