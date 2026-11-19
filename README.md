@@ -58,6 +58,10 @@ v2.0.1 fixed reading OpenCode usage from the redesigned console and Deskband cli
 
 - **Multiple providers** — track Claude and OpenCode together; log into each under
   Settings → General → Accounts. Deselect any metric you don't want on the widget.
+- **Offline-safe last known values** — if a poll fails (network drop, provider outage), the
+  widget keeps the last successful bars and marks them stale: a dimmed fill, an amber `⚠`,
+  and a hover tooltip with how long ago they were updated. The snapshot survives restarts and
+  clears on the next successful refresh; logout, session expiry, or no subscription removes it.
 - **Claude Extra Usage** — tracks Claude's pay-as-you-go spend limit as a dollar figure
   (`$used / $limit`) with a proportional bar. On an "Unlimited" Extra Usage plan (no monthly
   cap), it shows the prepaid balance left instead, with no bar.
@@ -96,6 +100,8 @@ v2.0.1 fixed reading OpenCode usage from the redesigned console and Deskband cli
 - **Configurable notifications** for low, exhausted, and reset quotas.
 - **Pick which metrics are shown** (Settings → Metrics) — deselected metrics stay listed so
   you can re-enable them.
+- **Open logs folder** — Settings → General → Diagnostics opens the local log folder for
+  troubleshooting.
 
 ## Quota color states
 
@@ -174,7 +180,9 @@ Settings are stored as JSON at:
 ```
 This includes widget opacity, layout mode (Compact / Taskbar / Deskband), bar coloring mode,
 saved position, selected metrics, polling interval, and notification preferences. The embedded
-browser session lives alongside it in `%AppData%\AiMeter\WebView2`.
+browser session lives alongside it in `%AppData%\AiMeter\WebView2`. The last successful usage
+snapshot is cached at `%AppData%\AiMeter\cache.json` (quota numbers, reset times and a
+timestamp only — no credentials) so the widget can show last-known values while offline.
 
 Diagnostic logs are written daily to `%AppData%\AiMeter\logs\aimeter-{yyyy-MM-dd}.log` and
 capture provider fetch failures, session expiry, and settings load/save errors — useful when
