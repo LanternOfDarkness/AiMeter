@@ -13,14 +13,6 @@ All notable changes to AiMeter are documented in this file.
 - **Open logs folder** — Settings → General → Diagnostics now has a button that opens
   `%AppData%\AiMeter\logs` in Explorer, creating the folder if needed.
 
-- **Offline-safe last known values** — when a provider fetch fails, AiMeter now keeps the last
-  successful bars instead of blanking the widget. They are shown with a dimmed fill, an
-  amber `⚠`, and a hover tooltip with the data's age. The snapshot is persisted to
-  `%AppData%\AiMeter\cache.json` and restored on restart, then cleared by the next successful
-  refresh or by logout / session expiry / no subscription.
-- **Open logs folder** — Settings → General → Diagnostics now has a button that opens
-  `%AppData%\AiMeter\logs` in Explorer, creating the folder if needed.
-
 ## [2.0.2] - 2026-11-19
 
 ### Fixed
