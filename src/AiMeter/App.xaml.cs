@@ -11,6 +11,7 @@ using AiMeter.ViewModels;
 using AiMeter.Managers;
 using AiMeter.Providers;
 using AiMeter.Services;
+using AiMeter.Services.Updates;
 
 namespace AiMeter;
 
@@ -29,9 +30,16 @@ public partial class App : Application
             {
                 // Register Services
                 services.AddSingleton<IMetricCacheStore, FileMetricCacheStore>();
+                services.AddSingleton<TimeProvider>(TimeProvider.System);
+                services.AddSingleton<IReleaseFeed, GithubReleaseFeed>();
+                services.AddSingleton<IUpdateStateStore, FileUpdateStateStore>();
+                services.AddSingleton<IUpdateDownloader, UpdateDownloader>();
+                services.AddSingleton<IProcessLauncher, ProcessLauncher>();
+                services.AddSingleton<IUpdateInstaller, UpdateInstaller>();
 
                 // Register Managers
                 services.AddSingleton<IProviderManager, ProviderManager>();
+                services.AddSingleton<IUpdateManager, UpdateManager>();
                 services.AddSingleton<ISettingsManager, SettingsManager>();
                 services.AddSingleton<IStartupManager, StartupManager>();
                 services.AddSingleton<IClaudeSession, ClaudeSession>();
@@ -99,6 +107,8 @@ public partial class App : Application
                 try { _notifyIcon.ForceCreate(); } catch { }
             }
         }
+
+        await _host.Services.GetRequiredService<IUpdateManager>().StartAsync();
 
         providerManager.AlertRaised += (s, alert) =>
         {
@@ -213,6 +223,8 @@ public partial class App : Application
 
         (_host!.Services.GetService<IClaudeApiClient>() as IDisposable)?.Dispose();
         (_host!.Services.GetService<IOpenCodeApiClient>() as IDisposable)?.Dispose();
+
+        await (_host!.Services.GetService<IUpdateManager>()?.StopAsync() ?? Task.CompletedTask);
 
         await _host!.StopAsync();
         _host.Dispose();
