@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Windows;
+using AiMeter.Logging;
 using AiMeter.Managers;
 using AiMeter.Models;
 using AiMeter.Services;
@@ -11,6 +14,7 @@ using AiMeter.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace AiMeter.ViewModels;
 
@@ -19,6 +23,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ISettingsManager _settingsManager;
     private readonly IProviderManager _providerManager;
     private readonly IStartupManager _startupManager;
+    private readonly ILogger<SettingsViewModel>? _logger;
 
     public AppConfig Config => _settingsManager.Current;
 
@@ -69,11 +74,12 @@ public partial class SettingsViewModel : ObservableObject
 
     public SettingsViewModel(ISettingsManager settingsManager, IProviderManager providerManager,
         IClaudeSession claudeSession, IOpenCodeSession openCodeSession, IStartupManager startupManager,
-        IServiceProvider serviceProvider)
+        IServiceProvider serviceProvider, ILogger<SettingsViewModel>? logger = null)
     {
         _settingsManager = settingsManager;
         _providerManager = providerManager;
         _startupManager = startupManager;
+        _logger = logger;
 
         // Fetch right away after a login/logout so the new provider's metrics show up (and
         // appear in the Metrics tab) without waiting for the next poll tick.
@@ -140,6 +146,26 @@ public partial class SettingsViewModel : ObservableObject
             option.IsSelected = Config.SelectedMetrics.Count == 0 || Config.SelectedMetrics.Contains(option.Name);
             option.CustomLabel = Config.MetricLabels.TryGetValue(option.Name, out var l) ? l : string.Empty;
             option.CustomColor = Config.MetricColors.TryGetValue(option.Name, out var c) ? c : null;
+        }
+    }
+
+    public string LogsFolderPath => LogPaths.Directory;
+
+    [RelayCommand]
+    private void OpenLogsFolder()
+    {
+        try
+        {
+            Directory.CreateDirectory(LogsFolderPath);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = LogsFolderPath,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to open logs folder {Path}", LogsFolderPath);
         }
     }
 

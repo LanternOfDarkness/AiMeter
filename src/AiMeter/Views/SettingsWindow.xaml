@@ -252,6 +252,18 @@
                             </StackPanel>
                         </Border>
 
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Text="DIAGNOSTICS" Style="{StaticResource SectionHeader}" />
+                                <Button Content="Open logs folder"
+                                        Command="{Binding OpenLogsFolderCommand}"
+                                        Width="150" Height="30" HorizontalAlignment="Left"
+                                        Background="#5B5B5B" Foreground="White" FontWeight="SemiBold"
+                                        BorderThickness="0" Cursor="Hand" />
+                                <TextBlock Text="{Binding LogsFolderPath}" Style="{StaticResource HintText}" />
+                            </StackPanel>
+                        </Border>
+
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

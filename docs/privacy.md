@@ -23,7 +23,8 @@ handles and where that data goes.
 | Data | Purpose | Where it is kept |
 |---|---|---|
 | Sign-in session (cookies) for claude.ai / opencode.ai | Lets the app fetch your usage after you sign in through the built-in browser window | Local WebView2 profile on your PC |
-| Usage figures (percent used, reset times, balances) | Shown in the widget and used for quota alerts | Memory, and the local settings file |
+| Usage figures (percent used, reset times, balances) | Shown in the widget and used for quota alerts | Memory, and the local settings and cache files |
+| Last successful usage snapshot (numbers, reset times, timestamp) | Lets the widget show the last known values while offline | Local `%AppData%\AiMeter\cache.json` |
 | Settings (layout, colors, selected metrics, startup option) | Remembering your preferences | Local `settings.json` |
 | Diagnostic logs (errors, fetch failures, session expiry) | Troubleshooting | Local log files, kept on your PC only |
 

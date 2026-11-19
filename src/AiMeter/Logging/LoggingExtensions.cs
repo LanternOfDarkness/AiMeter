@@ -12,11 +12,7 @@ public static class LoggingExtensions
     /// </summary>
     public static ILoggingBuilder AddFileLogger(this ILoggingBuilder builder)
     {
-        var directory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "AiMeter", "logs");
-
-        builder.AddProvider(new FileLoggerProvider(directory));
+        builder.AddProvider(new FileLoggerProvider(LogPaths.Directory));
         return builder;
     }
 }

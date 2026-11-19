@@ -144,62 +144,91 @@ public class OpenCodeApiClient : IOpenCodeApiClient, IDisposable
         return (status, body);
     }
 
-    private Task EnsureInitializedAsync() => _initTask ??= InitializeAsync();
+    private async Task EnsureInitializedAsync()
+    {
+        if (_initTask is { IsFaulted: true } or { IsCanceled: true })
+        {
+            DisposePartial();
+            _initTask = null;
+        }
+        _initTask ??= InitializeAsync();
+        await _initTask;
+    }
 
     private static readonly System.Threading.SemaphoreSlim WebViewInitLock = new(1, 1);
 
     private async Task InitializeAsync()
     {
-        _hostWindow = new Window
-        {
-            Width = 1,
-            Height = 1,
-            WindowStyle = WindowStyle.None,
-            ShowInTaskbar = false,
-            Left = -32000,
-            Top = -32000,
-        };
-        _webView = new WebView2();
-        _hostWindow.Content = _webView;
-        _hostWindow.Show();
-
-        var userDataFolder = System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "AiMeter", "WebView2");
-
-        await WebViewInitLock.WaitAsync();
         try
         {
-            var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-            for (int attempt = 1; attempt <= 3; attempt++)
+            _hostWindow = new Window
             {
-                try
+                Width = 1,
+                Height = 1,
+                WindowStyle = WindowStyle.None,
+                ShowInTaskbar = false,
+                Left = -32000,
+                Top = -32000,
+            };
+            _webView = new WebView2();
+            _hostWindow.Content = _webView;
+            _hostWindow.Show();
+
+            var userDataFolder = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "AiMeter", "WebView2");
+
+            await WebViewInitLock.WaitAsync();
+            try
+            {
+                var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+                for (int attempt = 1; attempt <= 3; attempt++)
                 {
-                    await _webView.EnsureCoreWebView2Async(env);
-                    break;
-                }
-                catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x800700AA) && attempt < 3)
-                {
-                    await Task.Delay(300);
+                    try
+                    {
+                        await _webView.EnsureCoreWebView2Async(env);
+                        break;
+                    }
+                    catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x800700AA) && attempt < 3)
+                    {
+                        await Task.Delay(300);
+                    }
                 }
             }
-        }
-        finally
-        {
-            WebViewInitLock.Release();
-        }
+            finally
+            {
+                WebViewInitLock.Release();
+            }
 
-        _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+            _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
 
-        var navigationComplete = new TaskCompletionSource();
-        void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
-        {
-            _webView.NavigationCompleted -= OnNavigationCompleted;
-            navigationComplete.TrySetResult();
+            var navigationComplete = new TaskCompletionSource();
+            void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+            {
+                _webView.NavigationCompleted -= OnNavigationCompleted;
+                navigationComplete.TrySetResult();
+            }
+            _webView.NavigationCompleted += OnNavigationCompleted;
+            _webView.CoreWebView2.Navigate("https://opencode.ai");
+            await navigationComplete.Task;
         }
-        _webView.NavigationCompleted += OnNavigationCompleted;
-        _webView.CoreWebView2.Navigate("https://opencode.ai");
-        await navigationComplete.Task;
+        catch
+        {
+            DisposePartial();
+            throw;
+        }
+    }
+
+    private void DisposePartial()
+    {
+        if (_webView?.CoreWebView2 is not null)
+        {
+            _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
+        }
+        _webView?.Dispose();
+        _hostWindow?.Close();
+        _webView = null;
+        _hostWindow = null;
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -215,13 +244,5 @@ public class OpenCodeApiClient : IOpenCodeApiClient, IDisposable
         tcs.TrySetResult(resultJson);
     }
 
-    public void Dispose()
-    {
-        if (_webView is not null)
-        {
-            _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
-        }
-        _webView?.Dispose();
-        _hostWindow?.Close();
-    }
+    public void Dispose() => DisposePartial();
 }
