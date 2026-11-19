@@ -41,6 +41,25 @@ public class FileLoggerTests
     }
 
     [Fact]
+    public void Log_tags_the_line_with_the_app_version()
+    {
+        var dir = NewTempDir();
+        try
+        {
+            var logger = new FileLogger(dir, "TestCategory");
+
+            LogMessage(logger, "versioned");
+
+            var content = File.ReadAllText(Directory.GetFiles(dir, "aimeter-*.log").Single());
+            content.Should().Contain($"[v{FileLogger.Version}] [Information] [TestCategory] versioned");
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Log_appends_so_multiple_lines_are_all_present()
     {
         var dir = NewTempDir();

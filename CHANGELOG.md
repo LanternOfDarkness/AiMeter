@@ -5,6 +5,10 @@ All notable changes to AiMeter are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **App version in every log line** — entries now read
+  `2026-11-19 05:34:26 [v2.1.0+1de1699] [Warning] [AiMeter.Providers.OpenCodeProvider] …`
+  (version plus short source revision), so a log pasted from another machine identifies the
+  build that produced it.
 - **Offline-safe last known values** — when a provider fetch fails, AiMeter now keeps the last
   successful bars instead of blanking the widget. They are shown with a dimmed fill, an
   amber `⚠`, and a hover tooltip with the data's age. The snapshot is persisted to
@@ -17,6 +21,22 @@ All notable changes to AiMeter are documented in this file.
   **Download & install** is pressed. The download is verified by SHA-256 and the embedded
   version; the previous exe is kept as `AiMeter.exe.old` until the new build starts, and a
   failed replace rolls back. Manual check from the tray menu or Settings → General → Updates.
+  **Later** hides the notification for 24 hours; **Skip this version** keeps that release
+  off the tray until a manual check re-surfaces it as skipped.
+
+### Changed
+- **Monospaced widget text** — the widget and Deskband now use Consolas, so the two-letter
+  metric labels line up in Compact, Taskbar and Deskband layouts.
+
+### Fixed
+- **OpenCode usage after the console redesign** — the OpenCode Console's pages are now an
+  empty client-rendered shell, so AiMeter no longer reads them. It calls the console's own
+  JSON API instead (`/console/api/user/workspaces`, then `/console/api/go/status` for the
+  first non-blocked workspace) and reads the 5-hour, weekly and monthly Go meters with their
+  reset times. Metric names are unchanged, so saved selections, labels and colors still apply.
+- **Crash when opening the update window** — its progress bar no longer tries to write back
+  to the read-only download progress.
+- **Crash when showing the stale-data tooltip** — the tooltip used an invalid nested binding.
 
 ## [2.0.2] - 2026-11-19
 

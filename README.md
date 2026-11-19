@@ -181,12 +181,17 @@ lives in the WebView2 profile). Log into just the providers you use.
 - **Nothing is downloaded until you approve it.** The tray shows an "Update to vX.Y.Z…" item
   and a balloon; the update window only downloads after **Download & install**. Manual checks:
   the tray menu's **Check for updates…**, or Settings → General → Updates → **Check now**.
+  Automatic checks can be turned off in Settings → General → Updates.
+- **Later** dismisses the notification for 24 hours. **Skip this version** marks that release
+  skipped, so it stays off the tray and out of Settings until a manual check re-surfaces it
+  (still marked skipped).
 - The downloaded `AiMeter.exe` is verified against the release's SHA-256 **and** its embedded
   version before the running exe is replaced. The previous file is kept as `AiMeter.exe.old`
   and deleted once the new build starts. Failures roll back to the old exe.
-- Works for the portable exe and the per-user installer. Debug builds, `bin`
-  (framework-dependent) builds and Microsoft Store/MSIX packages never self-update — they
-  offer the GitHub release page instead.
+- Works for the portable exe and the per-user installer. Debug and `bin` builds (and a
+  build whose folder is not writable) cannot replace themselves, so the update window offers
+  the GitHub release page instead. Microsoft Store/MSIX packages report that the Store
+  handles updates.
 - If a new build does not start: delete `AiMeter.exe`, then rename `AiMeter.exe.old` back to
   `AiMeter.exe`. There is no automatic post-launch health check yet.
 - Publishing a release (version bump, SHA-256 asset, tag/digest rules): see
@@ -203,10 +208,14 @@ saved position, selected metrics, polling interval, and notification preferences
 browser session lives alongside it in `%AppData%\AiMeter\WebView2`. The last successful usage
 snapshot is cached at `%AppData%\AiMeter\cache.json` (quota numbers, reset times and a
 timestamp only — no credentials) so the widget can show last-known values while offline.
+Update checks, skipped versions and notification times live in
+`%AppData%\AiMeter\update-state.json`.
 
 Diagnostic logs are written daily to `%AppData%\AiMeter\logs\aimeter-{yyyy-MM-dd}.log` and
 capture provider fetch failures, session expiry, and settings load/save errors — useful when
-metrics stop updating with no visible explanation.
+metrics stop updating with no visible explanation. Every line carries the version and a short
+source revision (e.g. `2026-11-19 05:34:26 [v2.1.0+1de1699] [Warning] …`), so a pasted line
+identifies the build that produced it.
 
 ## Architecture
 
