@@ -9,6 +9,7 @@
         mc:Ignorable="d"
         Title="AiMeter Widget" Width="Auto" SizeToContent="WidthAndHeight"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        FontFamily="Consolas"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"
