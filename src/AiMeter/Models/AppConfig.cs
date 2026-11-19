@@ -119,6 +119,13 @@ public partial class AppConfig : ObservableObject
     [ObservableProperty]
     private bool _showOverFullscreen = true;
 
+    /// <summary>
+    /// When true the app checks GitHub Releases in the background; downloading and installing
+    /// an update still require an explicit click.
+    /// </summary>
+    [ObservableProperty]
+    private bool _checkForUpdatesAutomatically = true;
+
     [ObservableProperty]
     private bool _notificationsEnabled = true;
 
