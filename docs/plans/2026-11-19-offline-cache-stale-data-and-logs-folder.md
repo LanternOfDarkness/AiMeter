@@ -1,7 +1,7 @@
 # Offline cache, stale-data warning & logs-folder button — plan
 
 **Date:** 2026-11-19
-**Status:** Implemented 2026-11-19 — commits `27d7da0`, `4ee0c37`, `d24cee8`, `835edf0`, `27b89f9`, `b2e1b3c`, `4c261af`. Manual offline/UI verification is not done.
+**Status:** Implemented 2026-11-19 — commits `27d7da0`, `4ee0c37`, `d24cee8`, `835edf0`, `27b89f9`, `b2e1b3c`, `4c261af`, `ac68dbc`. Manual offline/UI verification is not done.
 **Out of scope:** multiple OpenCode accounts (deferred to a later version)
 
 ## Implementation status (2026-11-19)
