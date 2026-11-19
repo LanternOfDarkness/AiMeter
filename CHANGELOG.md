@@ -29,6 +29,8 @@ All notable changes to AiMeter are documented in this file.
   metric labels line up in Compact, Taskbar and Deskband layouts.
 
 ### Fixed
+- **Stuck after the hidden browser fails to start** — AiMeter no longer waits forever when
+  the embedded browser hangs on startup; it gives up after 30 s and retries on the next poll.
 - **OpenCode usage after the console redesign** — the OpenCode Console's pages are now an
   empty client-rendered shell, so AiMeter no longer reads them. It calls the console's own
   JSON API instead (`/console/api/user/workspaces`, then `/console/api/go/status` for the

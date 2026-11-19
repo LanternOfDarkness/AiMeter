@@ -99,8 +99,22 @@ public class OpenCodeProvider : IProvider
                 return Report(metrics, ProviderFetchStatus.Success, null);
             }
 
-            // A 200 response with no meters means the workspace has no active Go subscription.
-            _logger.LogInformation("OpenCode: workspace {Workspace} has no Go meters", _workspaceId);
+            if (HasAccess(body))
+            {
+                // An access object without any parseable meter is an unrecognized payload, not "no subscription".
+                if (_session.StatusNote != ErrorNote)
+                {
+                    _logger.LogWarning("OpenCode: Go status for {Workspace} has no recognizable meters: {Body}",
+                        _workspaceId, Shorten(body));
+                }
+                return Error("OpenCode (Error Fetching)");
+            }
+
+            // access is null or absent: the workspace has no active Go subscription.
+            if (_session.StatusNote != NoSubscriptionNote)
+            {
+                _logger.LogInformation("OpenCode: workspace {Workspace} has no Go meters", _workspaceId);
+            }
             return Report(new[] { Placeholder(NoSubscriptionName) }, ProviderFetchStatus.NoData, NoSubscriptionNote);
         }
         catch (JsonException ex)
@@ -205,6 +219,15 @@ public class OpenCodeProvider : IProvider
             });
         }
         return metrics;
+    }
+
+    /// <summary>True when the Go status payload carries an <c>access</c> object (null or absent means no subscription).</summary>
+    public static bool HasAccess(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.ValueKind == JsonValueKind.Object
+            && doc.RootElement.TryGetProperty("access", out var access)
+            && access.ValueKind != JsonValueKind.Null;
     }
 
     private static bool TryReadNumber(JsonElement parent, string property, out double value)

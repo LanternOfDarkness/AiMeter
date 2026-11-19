@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using AiMeter.Providers;
 using AiMeter.Tests.Fakes;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -136,6 +137,68 @@ public class OpenCodeProviderTests
         result.Metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (No Subscription)");
         result.Status.Should().Be(ProviderFetchStatus.NoData);
         session.StatusNote.Should().Be(OpenCodeProvider.NoSubscriptionNote);
+    }
+
+    [Fact]
+    public async Task Status_without_access_property_means_no_go_subscription()
+    {
+        var api = new FakeOpenCodeApiClient()
+            .When(OpenCodeProvider.WorkspacesPath, 200, WorkspacesJson)
+            .When(OpenCodeProvider.GoStatusPath, 200, """{"product":"go"}""");
+        var session = new FakeOpenCodeSession { HasSession = true };
+
+        var result = await Build(session, api).GetMetricsAsync();
+
+        result.Metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (No Subscription)");
+        result.Status.Should().Be(ProviderFetchStatus.NoData);
+        session.StatusNote.Should().Be(OpenCodeProvider.NoSubscriptionNote);
+    }
+
+    [Theory]
+    [InlineData("""{"access":{}}""")]
+    [InlineData("""{"access":{"meters":[]}}""")]
+    [InlineData("""{"access":{"meters":{"fiveHour":{"limitMicroCents":"0","usedMicroCents":"1"}}}}""")]
+    public async Task Access_without_parseable_meters_is_an_error(string body)
+    {
+        var api = new FakeOpenCodeApiClient()
+            .When(OpenCodeProvider.WorkspacesPath, 200, WorkspacesJson)
+            .When(OpenCodeProvider.GoStatusPath, 200, body);
+        var session = new FakeOpenCodeSession { HasSession = true };
+
+        var result = await Build(session, api).GetMetricsAsync();
+
+        result.Metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Error Fetching)");
+        result.Status.Should().Be(ProviderFetchStatus.Error);
+        session.StatusNote.Should().Be(OpenCodeProvider.ErrorNote);
+    }
+
+    [Fact]
+    public async Task Unchanged_state_is_logged_only_once()
+    {
+        var api = new FakeOpenCodeApiClient()
+            .When(OpenCodeProvider.WorkspacesPath, 200, WorkspacesJson)
+            .When(OpenCodeProvider.GoStatusPath, 200, """{"access":null}""");
+        var logger = new CountingLogger();
+        var provider = new OpenCodeProvider(new FakeOpenCodeSession { HasSession = true }, api, logger);
+
+        await provider.GetMetricsAsync();
+        await provider.GetMetricsAsync();
+        logger.Count(LogLevel.Information).Should().Be(1);
+
+        api.When(OpenCodeProvider.GoStatusPath, 200, """{"access":{}}""");
+        await provider.GetMetricsAsync();
+        await provider.GetMetricsAsync();
+        logger.Count(LogLevel.Warning).Should().Be(1);
+    }
+
+    private sealed class CountingLogger : ILogger<OpenCodeProvider>
+    {
+        private readonly System.Collections.Generic.List<LogLevel> _levels = new();
+        public int Count(LogLevel level) => _levels.Count(l => l == level);
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => _levels.Add(logLevel);
     }
 
     [Fact]

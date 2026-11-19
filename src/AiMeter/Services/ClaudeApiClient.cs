@@ -104,6 +104,32 @@ public class ClaudeApiClient : IClaudeApiClient, IDisposable
 
     private static readonly System.Threading.SemaphoreSlim WebViewInitLock = new(1, 1);
 
+    private static readonly TimeSpan InitStepTimeout = TimeSpan.FromSeconds(30);
+
+    private async Task CreateCoreWebView2Async(string userDataFolder)
+    {
+        var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+        for (int attempt = 1; attempt <= 5; attempt++)
+        {
+            try
+            {
+                await _webView!.EnsureCoreWebView2Async(env);
+                break;
+            }
+            catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x800700AA) && attempt < 5)
+            {
+                await Task.Delay(500 * attempt);
+            }
+        }
+    }
+
+    private static async Task WithTimeout(Task task, TimeSpan timeout, string what)
+    {
+        if (await Task.WhenAny(task, Task.Delay(timeout)) != task)
+            throw new TimeoutException($"WebView2 {what} did not complete within {timeout.TotalSeconds:0} s");
+        await task;
+    }
+
     private async Task InitializeAsync()
     {
         try
@@ -121,27 +147,12 @@ public class ClaudeApiClient : IClaudeApiClient, IDisposable
             _hostWindow.Content = _webView;
             _hostWindow.Show();
 
-            var overrideFolder = Environment.GetEnvironmentVariable("AIMETER_WEBVIEW2_FOLDER");
-            var userDataFolder = string.IsNullOrWhiteSpace(overrideFolder)
-                ? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AiMeter", "WebView2")
-                : overrideFolder;
+            var userDataFolder = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AiMeter", "WebView2");
 
             await WebViewInitLock.WaitAsync();
             try
             {
-                var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-                for (int attempt = 1; attempt <= 5; attempt++)
-                {
-                    try
-                    {
-                        await _webView.EnsureCoreWebView2Async(env);
-                        break;
-                    }
-                    catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x800700AA) && attempt < 5)
-                    {
-                        await Task.Delay(500 * attempt);
-                    }
-                }
+                await WithTimeout(CreateCoreWebView2Async(userDataFolder), InitStepTimeout, "startup");
             }
             finally
             {
@@ -158,13 +169,26 @@ public class ClaudeApiClient : IClaudeApiClient, IDisposable
             }
             _webView.NavigationCompleted += OnNavigationCompleted;
             _webView.CoreWebView2.Navigate("https://claude.ai");
-            await navigationComplete.Task;
+            await WithTimeout(navigationComplete.Task, InitStepTimeout, "initial navigation");
         }
         catch
         {
+            DisposePartial();
             _initTask = null;
             throw;
         }
+    }
+
+    private void DisposePartial()
+    {
+        if (_webView?.CoreWebView2 is not null)
+        {
+            _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
+        }
+        _webView?.Dispose();
+        _hostWindow?.Close();
+        _webView = null;
+        _hostWindow = null;
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -180,13 +204,5 @@ public class ClaudeApiClient : IClaudeApiClient, IDisposable
         tcs.TrySetResult(resultJson);
     }
 
-    public void Dispose()
-    {
-        if (_webView is not null)
-        {
-            _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
-        }
-        _webView?.Dispose();
-        _hostWindow?.Close();
-    }
+    public void Dispose() => DisposePartial();
 }

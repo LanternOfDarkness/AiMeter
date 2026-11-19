@@ -24,8 +24,6 @@ public class OpenCodeApiClient : IOpenCodeApiClient, IDisposable
     private Task? _initTask;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _pending = new();
 
-    public string CurrentUrl => _webView?.Source?.ToString() ?? string.Empty;
-
     public async Task<(int StatusCode, string? Body)> GetAsync(string path, string? orgId = null)
     {
         await EnsureInitializedAsync();
@@ -111,6 +109,32 @@ public class OpenCodeApiClient : IOpenCodeApiClient, IDisposable
 
     private static readonly System.Threading.SemaphoreSlim WebViewInitLock = new(1, 1);
 
+    private static readonly TimeSpan InitStepTimeout = TimeSpan.FromSeconds(30);
+
+    private async Task CreateCoreWebView2Async(string userDataFolder)
+    {
+        var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+        for (int attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                await _webView!.EnsureCoreWebView2Async(env);
+                break;
+            }
+            catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x800700AA) && attempt < 3)
+            {
+                await Task.Delay(300);
+            }
+        }
+    }
+
+    private static async Task WithTimeout(Task task, TimeSpan timeout, string what)
+    {
+        if (await Task.WhenAny(task, Task.Delay(timeout)) != task)
+            throw new TimeoutException($"WebView2 {what} did not complete within {timeout.TotalSeconds:0} s");
+        await task;
+    }
+
     private async Task InitializeAsync()
     {
         try
@@ -128,27 +152,12 @@ public class OpenCodeApiClient : IOpenCodeApiClient, IDisposable
             _hostWindow.Content = _webView;
             _hostWindow.Show();
 
-            var overrideFolder = Environment.GetEnvironmentVariable("AIMETER_WEBVIEW2_FOLDER");
-            var userDataFolder = string.IsNullOrWhiteSpace(overrideFolder)
-                ? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AiMeter", "WebView2")
-                : overrideFolder;
+            var userDataFolder = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AiMeter", "WebView2");
 
             await WebViewInitLock.WaitAsync();
             try
             {
-                var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-                for (int attempt = 1; attempt <= 3; attempt++)
-                {
-                    try
-                    {
-                        await _webView.EnsureCoreWebView2Async(env);
-                        break;
-                    }
-                    catch (System.Runtime.InteropServices.COMException ex) when (ex.HResult == unchecked((int)0x800700AA) && attempt < 3)
-                    {
-                        await Task.Delay(300);
-                    }
-                }
+                await WithTimeout(CreateCoreWebView2Async(userDataFolder), InitStepTimeout, "startup");
             }
             finally
             {
@@ -165,7 +174,7 @@ public class OpenCodeApiClient : IOpenCodeApiClient, IDisposable
             }
             _webView.NavigationCompleted += OnNavigationCompleted;
             _webView.CoreWebView2.Navigate("https://opencode.ai");
-            await navigationComplete.Task;
+            await WithTimeout(navigationComplete.Task, InitStepTimeout, "initial navigation");
         }
         catch
         {

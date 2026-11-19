@@ -14,8 +14,6 @@ public sealed class FakeOpenCodeApiClient : IOpenCodeApiClient
 
     public List<string> RequestedPaths => Requests.Select(r => r.Path).ToList();
 
-    public string CurrentUrl { get; set; } = string.Empty;
-
     public FakeOpenCodeApiClient When(string path, int status, string? body)
     {
         _responses[path] = (status, body);
