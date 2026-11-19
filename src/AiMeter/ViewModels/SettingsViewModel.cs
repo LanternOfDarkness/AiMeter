@@ -23,9 +23,13 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ISettingsManager _settingsManager;
     private readonly IProviderManager _providerManager;
     private readonly IStartupManager _startupManager;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<SettingsViewModel>? _logger;
 
     public AppConfig Config => _settingsManager.Current;
+
+    /// <summary>Live update state shared with the update window and tray menu.</summary>
+    public UpdateViewModel Updates { get; }
 
     /// <summary>
     /// Whether Deskband mode can be offered on this machine (Windows 11 24H2+). Drives the
@@ -74,12 +78,14 @@ public partial class SettingsViewModel : ObservableObject
 
     public SettingsViewModel(ISettingsManager settingsManager, IProviderManager providerManager,
         IClaudeSession claudeSession, IOpenCodeSession openCodeSession, IStartupManager startupManager,
-        IServiceProvider serviceProvider, ILogger<SettingsViewModel>? logger = null)
+        IServiceProvider serviceProvider, UpdateViewModel updates, ILogger<SettingsViewModel>? logger = null)
     {
         _settingsManager = settingsManager;
         _providerManager = providerManager;
         _startupManager = startupManager;
+        _serviceProvider = serviceProvider;
         _logger = logger;
+        Updates = updates;
 
         // Fetch right away after a login/logout so the new provider's metrics show up (and
         // appear in the Metrics tab) without waiting for the next poll tick.
@@ -167,6 +173,12 @@ public partial class SettingsViewModel : ObservableObject
         {
             _logger?.LogWarning(ex, "Failed to open logs folder {Path}", LogsFolderPath);
         }
+    }
+
+    [RelayCommand]
+    private void ShowUpdateWindow()
+    {
+        _serviceProvider.GetRequiredService<UpdateWindow>().ShowOrActivate();
     }
 
     [RelayCommand]

@@ -21,7 +21,8 @@ public class SettingsViewModelCustomizationTests
 
     private static SettingsViewModel BuildVm(FakeSettingsManager settings, ProviderManager manager)
         => new(settings, manager, new FakeClaudeSession(), new FakeOpenCodeSession(),
-            new FakeStartupManager(), new FakeServiceProvider());
+            new FakeStartupManager(), new FakeServiceProvider(),
+            new UpdateViewModel(new FakeUpdateManager(), new FakeUiDispatcher(), new FakeProcessLauncher()));
 
     [Fact]
     public async Task Save_persists_only_non_empty_label_and_color_overrides()

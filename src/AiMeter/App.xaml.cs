@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -58,6 +59,7 @@ public partial class App : Application
                 services.AddSingleton<WidgetViewModel>();
                 services.AddSingleton<SettingsViewModel>();
                 services.AddSingleton<UpdateViewModel>();
+                services.AddTransient<UpdateBalloonViewModel>();
 
                 // Register Views
                 services.AddSingleton<Views.WidgetWindow>();
@@ -111,7 +113,15 @@ public partial class App : Application
             }
         }
 
-        await _host.Services.GetRequiredService<IUpdateManager>().StartAsync();
+        var updateManager = _host.Services.GetRequiredService<IUpdateManager>();
+        var uiDispatcher = _host.Services.GetRequiredService<IUiDispatcher>();
+        updateManager.UpdateAvailable += (_, release) =>
+        {
+            // The manager raises this from its background loop; the balloon needs the UI thread.
+            uiDispatcher.Post(() => ShowUpdateBalloon(release));
+        };
+
+        await updateManager.StartAsync();
 
         providerManager.AlertRaised += (s, alert) =>
         {
@@ -120,6 +130,25 @@ public partial class App : Application
 
         // Fire-and-forget is safe: CleanupOldExecutablesAsync catches everything it throws.
         _ = CleanupOldExecutablesAsync(_host.Services.GetService<ILogger<App>>());
+    }
+
+    private void ShowUpdateBalloon(ReleaseInfo release)
+    {
+        try
+        {
+            var vm = _host!.Services.GetRequiredService<UpdateBalloonViewModel>();
+            vm.Initialize(release, close: () => _notifyIcon?.CloseBalloon());
+            _notifyIcon?.ShowCustomBalloon(
+                new Views.UpdateBalloonView { DataContext = vm },
+                PopupAnimation.Slide,
+                20000);
+        }
+        catch (Exception ex)
+        {
+            // The tray menu entry is the fallback; never send a second notification.
+            _host?.Services.GetService<ILogger<App>>()
+                ?.LogWarning(ex, "Could not show the update tray balloon.");
+        }
     }
 
     private static int? TryGetRestartedFromPid(string[] args)

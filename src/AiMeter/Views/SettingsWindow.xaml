@@ -20,6 +20,7 @@
             <converters:EnumToBooleanConverter x:Key="EnumToBooleanConverter" />
             <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
             <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         </ResourceDictionary>
     </Window.Resources>
 
@@ -228,6 +229,49 @@
 
                                     <CheckBox Content="Notify when quota is exhausted" IsChecked="{Binding Config.NotifyOnExhausted}" />
                                     <CheckBox Content="Notify when quota resets" IsChecked="{Binding Config.NotifyOnReset}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource SectionCard}">
+                            <StackPanel>
+                                <TextBlock Text="UPDATES" Style="{StaticResource SectionHeader}" />
+                                <TextBlock Text="{Binding Updates.CurrentVersionText, StringFormat={}Current version: {0}}" Foreground="White" />
+
+                                <CheckBox Content="Check for updates automatically"
+                                          IsChecked="{Binding Config.CheckForUpdatesAutomatically}" Margin="0,8,0,0" />
+                                <TextBlock Text="Checked daily in the background. Downloads still require your approval."
+                                           Style="{StaticResource HintText}" Margin="0,2,0,0" />
+
+                                <TextBlock Text="{Binding Updates.LastCheckedText, StringFormat={}Last checked: {0}}"
+                                           Foreground="White" Margin="0,10,0,0" />
+                                <TextBlock Text="{Binding Updates.StatusText, StringFormat={}Status: {0}}"
+                                           Foreground="White" TextWrapping="Wrap" Margin="0,2,0,0" />
+
+                                <TextBlock Text="{Binding Updates.InstallUnavailableReason}" Margin="0,4,0,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource HintText}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Updates.InstallUnavailableReason}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                    <Button Content="Check now" Command="{Binding Updates.CheckNowCommand}"
+                                            IsEnabled="{Binding Updates.CanCheckNow}"
+                                            Width="110" Height="30" Margin="0,0,8,0"
+                                            Background="#5B5B5B" Foreground="White" FontWeight="SemiBold"
+                                            BorderThickness="0" Cursor="Hand" />
+                                    <Button Content="Open update" Command="{Binding ShowUpdateWindowCommand}"
+                                            Width="130" Height="30"
+                                            Background="#2ECC71" Foreground="White" FontWeight="Bold"
+                                            BorderThickness="0" Cursor="Hand"
+                                            Visibility="{Binding Updates.HasAvailableUpdate, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>

@@ -23,12 +23,14 @@ public class SettingsViewModelResyncTests
     private static SettingsViewModel BuildVm(FakeSettingsManager settings, ProviderManager manager)
         => BuildVm(settings, manager, new FakeStartupManager());
 
-    private static SettingsViewModel BuildVm(FakeSettingsManager settings, ProviderManager manager, FakeStartupManager startup)
+    private static SettingsViewModel BuildVm(FakeSettingsManager settings, ProviderManager manager, FakeStartupManager startup,
+        UpdateViewModel? updates = null)
     {
         var session = new FakeClaudeSession();
         var openCodeSession = new FakeOpenCodeSession();
         var sp = new FakeServiceProvider();
-        return new SettingsViewModel(settings, manager, session, openCodeSession, startup, sp);
+        updates ??= new UpdateViewModel(new FakeUpdateManager(), new FakeUiDispatcher(), new FakeProcessLauncher());
+        return new SettingsViewModel(settings, manager, session, openCodeSession, startup, sp, updates);
     }
 
     [Fact]
@@ -76,5 +78,24 @@ public class SettingsViewModelResyncTests
         vm.MetricOptions.Single(o => o.Name == "A").IsSelected.Should().BeTrue();
         vm.MetricOptions.Single(o => o.Name == "B").IsSelected.Should().BeFalse();
         vm.MetricOptions.Single(o => o.Name == "C").IsSelected.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Updates_is_the_injected_view_model_and_reflects_the_manager()
+    {
+        var settings = new FakeSettingsManager();
+        var manager = new ProviderManager(new IProvider[] { new FakeProvider() }, settings);
+        var updateManager = new FakeUpdateManager
+        {
+            StatusText = "Update available — v9.9.9",
+            LastCheckUtc = null,
+        };
+        var updates = new UpdateViewModel(updateManager, new FakeUiDispatcher(), new FakeProcessLauncher());
+
+        var vm = BuildVm(settings, manager, new FakeStartupManager(), updates);
+
+        vm.Updates.Should().BeSameAs(updates);
+        vm.Updates.StatusText.Should().Be("Update available — v9.9.9");
+        vm.Updates.LastCheckedText.Should().Be("Never");
     }
 }
