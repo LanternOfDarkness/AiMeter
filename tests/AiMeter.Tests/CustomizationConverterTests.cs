@@ -24,7 +24,12 @@ public class CustomizationConverterTests
     private static Color BarColor(UsageMetric metric, BarColorMode mode, DateTime now)
     {
         var conv = new MetricBarColorConverter();
-        var brush = (SolidColorBrush)conv.Convert(new object[] { metric, mode, now }, typeof(Brush), null!, Ci);
+        var values = new object?[]
+        {
+            metric.RemainingPercentage, mode, now,
+            metric.ResetTime, metric.WindowDuration, metric.CustomColor,
+        };
+        var brush = (SolidColorBrush)conv.Convert(values!, typeof(Brush), null!, Ci);
         return brush.Color;
     }
 

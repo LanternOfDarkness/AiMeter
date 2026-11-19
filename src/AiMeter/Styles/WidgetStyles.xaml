@@ -90,10 +90,15 @@
                         </Style>
                     </Border.Style>
                     <Border.Background>
+                        <!-- Every input is its own binding so a poll that updates the metric
+                             repaints the bar immediately instead of waiting for the clock tick. -->
                         <MultiBinding Converter="{StaticResource MetricBarColorConverter}">
-                            <Binding Path="." />
+                            <Binding Path="RemainingPercentage" />
                             <Binding Path="DataContext.Config.BarColorMode" RelativeSource="{RelativeSource AncestorType=Window}" />
                             <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
+                            <Binding Path="ResetTime" />
+                            <Binding Path="WindowDuration" />
+                            <Binding Path="CustomColor" />
                         </MultiBinding>
                     </Border.Background>
                     <Border.RenderTransform>
@@ -224,10 +229,14 @@
                         </MultiBinding>
                     </Border.Width>
                     <Border.Background>
+                        <!-- Same inputs as the Taskbar bar (see above). -->
                         <MultiBinding Converter="{StaticResource MetricBarColorConverter}">
-                            <Binding Path="." />
+                            <Binding Path="RemainingPercentage" />
                             <Binding Path="DataContext.Config.BarColorMode" RelativeSource="{RelativeSource AncestorType=Window}" />
                             <Binding Path="DataContext.Now" RelativeSource="{RelativeSource AncestorType=Window}" />
+                            <Binding Path="ResetTime" />
+                            <Binding Path="WindowDuration" />
+                            <Binding Path="CustomColor" />
                         </MultiBinding>
                     </Border.Background>
                 </Border>

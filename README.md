@@ -22,12 +22,12 @@ architecture designed for OpenAI, Gemini, Grok, OpenRouter, DeepSeek, and others
 
 ## Download
 
-**Latest release: v2.0.1** —
-[AiMeter.exe](https://github.com/LanternOfDarkness/AiMeter/releases/download/v2.0.1/AiMeter.exe)
+**Latest release: v2.0.2** —
+[AiMeter.exe](https://github.com/LanternOfDarkness/AiMeter/releases/download/v2.0.2/AiMeter.exe)
 (30.0 MiB)
 
 ```
-SHA-256: 705E5A61E7C58F13B33AD869271AFE3E31F94D661868AB8F083C59545EE84F4A
+SHA-256: 4C7663D92018BEBB2E1A2A9201EB7A1FA96FCABEC36E42E2A4C71FBE9B882DF0
 ```
 
 A single framework-dependent `AiMeter.exe` for **win-x64** — no zip, no loose files. It needs
@@ -42,17 +42,17 @@ follow-up (see [docs/design.md](docs/design.md)).
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
-## What's new in v2.0.1
+## What's new in v2.0.2
 
-- **OpenCode works again** after opencode.ai's console redesign — Go usage is now read from
-  your workspace's *Activity ▸ My usage* page. Rolling, Weekly and Monthly meters and their
-  reset times are back, and a slow-loading page no longer shows up as "No active Go
-  subscription".
-- **Deskband no longer clips** — the in-taskbar band sizes itself to its content, so long
-  labels and reset times (`13d 17h`) aren't cut off at the right edge.
+- **OpenCode rolling limit is back** — the console renamed its 5-hour meter to
+  *"5-hour window"*, which the provider didn't recognize, so only Weekly and Monthly showed.
+  Both names now map to the existing *OpenCode Rolling* metric, so saved labels, colors and
+  selections keep working.
+- **Bars repaint immediately** — a quota that jumped back to 100% after a reset could keep its
+  old red color until the next minute. The bar color now follows every poll.
 
-v2.0.0 added the **Deskband** layout, **Progressive & Pace** bar coloring, the single-exe
-release and the move to .NET 10 — see [CHANGELOG.md](CHANGELOG.md).
+v2.0.1 fixed reading OpenCode usage from the redesigned console and Deskband clipping — see
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Features
 

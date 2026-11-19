@@ -2,6 +2,19 @@
 
 All notable changes to AiMeter are documented in this file.
 
+## [2.0.2] - 2026-11-19
+
+### Fixed
+- **OpenCode rolling (5-hour) limit missing** — the console renamed the 5-hour meter's
+  accessible name from `Rolling Go usage` to `5-hour window Go usage`, and the provider only
+  matched the old label, so it dropped that meter while Weekly and Monthly kept working. Both
+  labels now map to `OpenCode Rolling`, preserving saved selections, labels and colors.
+- **Bar color stale after a reset** — the bar's color was bound to the whole metric object, so
+  WPF never re-ran the color converter when a poll changed the remaining quota: the fill
+  updated but a red bar could stay red at 100% until the next clock tick. The converter now
+  binds each input (remaining %, mode, clock, reset time, window, custom color) directly, so a
+  refresh repaints immediately.
+
 ## [2.0.1] - 2026-11-03
 
 ### Fixed

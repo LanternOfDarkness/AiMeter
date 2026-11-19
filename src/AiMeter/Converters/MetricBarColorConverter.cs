@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.Windows.Data;
 using System.Windows.Media;
@@ -6,9 +7,14 @@ using AiMeter.Models;
 namespace AiMeter.Converters;
 
 /// <summary>
-/// Resolves a metric bar's brush from [UsageMetric, BarColorMode, now]. A per-metric custom
-/// color always wins; otherwise the mode picks between the fixed quota thresholds, a smooth
-/// remaining-percentage gradient, and a quota-vs-time-to-reset ("pace") color.
+/// Resolves a metric bar's brush from its live scalars - remaining percentage, mode, clock,
+/// reset time, window length and custom color. Deliberately takes every input as its own
+/// binding rather than the metric object: WPF only re-runs a MultiBinding when one of its child
+/// bindings changes, so a single "path=." source would leave the bar's color stale after a
+/// poll updates the metric (e.g. red at 100% right after a reset) until the next clock tick.
+/// A per-metric custom color always wins; otherwise the mode picks between the fixed quota
+/// thresholds, a smooth remaining-percentage gradient, and a quota-vs-time-to-reset
+/// ("pace") color.
 /// </summary>
 public class MetricBarColorConverter : IMultiValueConverter
 {
@@ -31,20 +37,24 @@ public class MetricBarColorConverter : IMultiValueConverter
 
     private readonly QuotaToColorConverter _quota = new();
 
+    /// <param name="values">
+    /// 0: remaining percentage; 1: <see cref="BarColorMode"/>; 2: current time; 3: reset time;
+    /// 4: window duration; 5: custom color hex.
+    /// </param>
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        var metric = values.Length > 0 ? values[0] as UsageMetric : null;
+        var remaining = values.Length > 0 && values[0] is double pct ? pct : 0d;
         var mode = values.Length > 1 && values[1] is BarColorMode m ? m : BarColorMode.Threshold;
         var now = values.Length > 2 && values[2] is DateTime t ? t : DateTime.Now;
+        var reset = values.Length > 3 ? values[3] as DateTime? : null;
+        var duration = values.Length > 4 ? values[4] as TimeSpan? : null;
+        var customColor = values.Length > 5 ? values[5] as string : null;
 
-        if (metric is null)
-            return _quota.Convert(0d, targetType, parameter, culture);
-
-        if (!string.IsNullOrWhiteSpace(metric.CustomColor))
+        if (!string.IsNullOrWhiteSpace(customColor))
         {
             try
             {
-                var color = (Color)ColorConverter.ConvertFromString(metric.CustomColor);
+                var color = (Color)ColorConverter.ConvertFromString(customColor);
                 return FrozenBrush(color);
             }
             catch
@@ -55,16 +65,16 @@ public class MetricBarColorConverter : IMultiValueConverter
 
         // A zero/negative window can't define a pace - fall back to the thresholds below.
         if (mode == BarColorMode.Pace
-            && metric.WindowDuration is { } duration && duration > TimeSpan.Zero
-            && metric.ResetTime is { } reset)
+            && duration is { } window && window > TimeSpan.Zero
+            && reset is { } resetsAt)
         {
-            return FrozenBrush(PaceColor(metric.RemainingPercentage, reset, duration, now));
+            return FrozenBrush(PaceColor(remaining, resetsAt, window, now));
         }
 
         if (mode == BarColorMode.Progressive)
-            return FrozenBrush(ProgressiveColor(metric.RemainingPercentage));
+            return FrozenBrush(ProgressiveColor(remaining));
 
-        return _quota.Convert(metric.RemainingPercentage, targetType, parameter, culture);
+        return _quota.Convert(remaining, targetType, parameter, culture);
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)

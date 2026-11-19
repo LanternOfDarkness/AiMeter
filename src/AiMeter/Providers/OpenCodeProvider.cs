@@ -45,12 +45,14 @@ public class OpenCodeProvider : IProvider
     public const string ErrorNote = "Usage unavailable (see log)";
 
     // Meter labels on the page → widget names (unchanged so users' saved selections/labels/
-    // colors keep applying).
+    // colors keep applying). The console renders the 5-hour meter as "5-hour window" (its
+    // aria-label is "5-hour window Go usage"); "Rolling" is the older label it shipped with.
     private static readonly (string Label, string Name, TimeSpan Duration)[] Meters =
     {
-        ("Rolling", "OpenCode Rolling", TimeSpan.FromHours(5)),
-        ("Weekly",  "OpenCode Weekly",  TimeSpan.FromDays(7)),
-        ("Monthly", "OpenCode Monthly", TimeSpan.FromDays(30)),
+        ("5-hour window", "OpenCode Rolling", TimeSpan.FromHours(5)),
+        ("Rolling",       "OpenCode Rolling", TimeSpan.FromHours(5)),
+        ("Weekly",        "OpenCode Weekly",  TimeSpan.FromDays(7)),
+        ("Monthly",       "OpenCode Monthly", TimeSpan.FromDays(30)),
     };
 
     private static readonly Regex WorkspaceIdPattern = new(@"/console/(?<id>[a-z]+_[A-Za-z0-9]+)(?:[/?#""]|$)");

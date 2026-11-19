@@ -20,8 +20,8 @@ public class OpenCodeProviderTests
         <nav><a href="/console/workspace" class="nav-avatar-link"></a><button title="Switch workspace: Default"></button>
         <a href="/console/wrk_01KX5JXZQB94WAJNBNGER9A12C/activity" class="active" aria-current="page"><span>Activity</span></a></nav>
         <section class="flex" aria-label="Go usage"><div><h2><span>Go</span><span class="truncate">Renews Nov 16</span></h2></div>
-        <div class="grid"><div class="min-w-0"><p class="text-foreground">Rolling</p><p class="truncate" title="11/3/2026, 3:22:58 AM">Resets in 0h 35m</p></div>
-        <div class="flex h-2 w-full gap-1" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Rolling Go usage" aria-valuenow="100" aria-valuetext="100% used"><div data-slot="progress-fill" style="flex: 100 1 0%;"></div></div>
+        <div class="grid"><div class="min-w-0"><p class="text-foreground">5-hour window</p><p class="truncate" title="11/3/2026, 3:22:58 AM">Resets in 0h 35m</p></div>
+        <div class="flex h-2 w-full gap-1" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="5-hour window Go usage" aria-valuenow="100" aria-valuetext="100% used"><div data-slot="progress-fill" style="flex: 100 1 0%;"></div></div>
         <p class="text-right">100% used</p></div>
         <div class="grid"><div class="min-w-0"><p class="text-foreground">Weekly</p><p class="truncate" title="11/9/2026, 2:00:00 AM">Resets in 5d 23h</p></div>
         <div class="flex h-2 w-full gap-1" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Weekly Go usage" aria-valuenow="46" aria-valuetext="46% used"><div data-slot="progress-fill"></div><div data-slot="progress-remainder"></div></div>
@@ -73,6 +73,17 @@ public class OpenCodeProviderTests
         metrics[0].ResetTime.Should().Be(new DateTime(2026, 11, 3, 3, 22, 58));
         metrics[1].ResetTime.Should().Be(new DateTime(2026, 11, 9, 2, 0, 0));
         metrics[2].ResetTime.Should().Be(new DateTime(2026, 11, 16, 20, 37, 4));
+    }
+
+    [Fact]
+    public void Legacy_rolling_label_still_parses()
+    {
+        var html = UsageHtml.Replace("5-hour window", "Rolling");
+
+        var metrics = OpenCodeProvider.ParseUsagePage(html, CapturedAt);
+
+        metrics.Select(m => m.Name).Should().Equal("OpenCode Rolling", "OpenCode Weekly", "OpenCode Monthly");
+        metrics[0].WindowDuration.Should().Be(TimeSpan.FromHours(5));
     }
 
     [Fact]
