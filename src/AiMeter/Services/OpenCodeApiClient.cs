@@ -26,7 +26,7 @@ public class OpenCodeApiClient : IOpenCodeApiClient, IDisposable
 
     public string CurrentUrl => _webView?.Source?.ToString() ?? string.Empty;
 
-    public async Task<(int StatusCode, string? Body)> GetAsync(string path)
+    public async Task<(int StatusCode, string? Body)> GetAsync(string path, string? orgId = null)
     {
         await EnsureInitializedAsync();
 
@@ -36,65 +36,15 @@ public class OpenCodeApiClient : IOpenCodeApiClient, IDisposable
             await RefreshNavigationAsync();
         }
 
-        var (status, body) = await ExecuteFetchAsync(path);
+        var (status, body) = await ExecuteFetchAsync(path, orgId);
         if (status is 401 or 403 or 0)
         {
             await RefreshNavigationAsync();
-            (status, body) = await ExecuteFetchAsync(path);
+            (status, body) = await ExecuteFetchAsync(path, orgId);
         }
 
         return (status, body);
     }
-
-    public async Task<RenderedPage> ReadRenderedPageAsync(string url, string readyCheck)
-    {
-        await EnsureInitializedAsync();
-        var core = _webView!.CoreWebView2;
-        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        // Redirect chains (opencode.ai -> auth.opencode.ai -> back) fire several completions;
-        // only the document load matters - the ready check covers the SPA's own rendering.
-        // Waiting for it also keeps the check off the previous page's (identical) stale DOM.
-        void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e) => loaded.TrySetResult();
-
-        core.NavigationCompleted += OnNavigationCompleted;
-        try
-        {
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
-            core.Navigate(url);
-            await Task.WhenAny(loaded.Task, Task.Delay(deadline - DateTime.UtcNow));
-
-            var ready = false;
-            while (!IsLoginUrl(CurrentUrl))
-            {
-                try
-                {
-                    ready = await core.ExecuteScriptAsync($"!!({readyCheck})") == "true";
-                }
-                catch (Exception)
-                {
-                    // Mid-navigation (e.g. a client-side redirect); try again.
-                }
-                if (ready || DateTime.UtcNow >= deadline) break;
-                await Task.Delay(500);
-            }
-
-            if (IsLoginUrl(CurrentUrl))
-            {
-                return new RenderedPage(CurrentUrl, null, false, true);
-            }
-            var json = await core.ExecuteScriptAsync("document.documentElement.outerHTML");
-            return new RenderedPage(CurrentUrl, JsonSerializer.Deserialize<string?>(json), ready, false);
-        }
-        finally
-        {
-            core.NavigationCompleted -= OnNavigationCompleted;
-        }
-    }
-
-    private static bool IsLoginUrl(string url) =>
-        url.Contains("/console/login", StringComparison.OrdinalIgnoreCase)
-        || url.Contains("auth.opencode.ai", StringComparison.OrdinalIgnoreCase);
 
     private async Task RefreshNavigationAsync()
     {
@@ -110,15 +60,19 @@ public class OpenCodeApiClient : IOpenCodeApiClient, IDisposable
         await Task.WhenAny(navigationComplete.Task, Task.Delay(10000));
     }
 
-    private async Task<(int StatusCode, string? Body)> ExecuteFetchAsync(string path)
+    private async Task<(int StatusCode, string? Body)> ExecuteFetchAsync(string path, string? orgId)
     {
         var requestId = Guid.NewGuid().ToString("N");
         var tcs = new TaskCompletionSource<string>();
         _pending[requestId] = tcs;
 
+        var headersJson = orgId is null
+            ? "{}"
+            : JsonSerializer.Serialize(new Dictionary<string, string> { ["x-org-id"] = orgId });
+
         var script = $$"""
             (function() {
-                fetch({{JsonSerializer.Serialize(path)}}, { credentials: 'include' })
+                fetch({{JsonSerializer.Serialize(path)}}, { credentials: 'include', headers: {{headersJson}} })
                     .then(r => r.text().then(body => ({ status: r.status, body })))
                     .catch(e => ({ status: 0, body: String(e) }))
                     .then(result => window.chrome.webview.postMessage(JSON.stringify({
@@ -174,9 +128,10 @@ public class OpenCodeApiClient : IOpenCodeApiClient, IDisposable
             _hostWindow.Content = _webView;
             _hostWindow.Show();
 
-            var userDataFolder = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "AiMeter", "WebView2");
+            var overrideFolder = Environment.GetEnvironmentVariable("AIMETER_WEBVIEW2_FOLDER");
+            var userDataFolder = string.IsNullOrWhiteSpace(overrideFolder)
+                ? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AiMeter", "WebView2")
+                : overrideFolder;
 
             await WebViewInitLock.WaitAsync();
             try

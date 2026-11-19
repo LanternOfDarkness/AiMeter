@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using AiMeter.Providers;
-using AiMeter.Services;
 using AiMeter.Tests.Fakes;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,38 +12,47 @@ namespace AiMeter.Tests;
 public class OpenCodeProviderTests
 {
     private const string Workspace = "wrk_01KX5JXZQB94WAJNBNGER9A12C";
-    private static readonly string UsageUrl = OpenCodeProvider.UsagePageUrl(Workspace);
 
-    // Go card from a live console "My usage" page (classes trimmed).
-    private const string UsageHtml = """
-        <nav><a href="/console/workspace" class="nav-avatar-link"></a><button title="Switch workspace: Default"></button>
-        <a href="/console/wrk_01KX5JXZQB94WAJNBNGER9A12C/activity" class="active" aria-current="page"><span>Activity</span></a></nav>
-        <section class="flex" aria-label="Go usage"><div><h2><span>Go</span><span class="truncate">Renews Nov 16</span></h2></div>
-        <div class="grid"><div class="min-w-0"><p class="text-foreground">5-hour window</p><p class="truncate" title="11/3/2026, 3:22:58 AM">Resets in 0h 35m</p></div>
-        <div class="flex h-2 w-full gap-1" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="5-hour window Go usage" aria-valuenow="100" aria-valuetext="100% used"><div data-slot="progress-fill" style="flex: 100 1 0%;"></div></div>
-        <p class="text-right">100% used</p></div>
-        <div class="grid"><div class="min-w-0"><p class="text-foreground">Weekly</p><p class="truncate" title="11/9/2026, 2:00:00 AM">Resets in 5d 23h</p></div>
-        <div class="flex h-2 w-full gap-1" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Weekly Go usage" aria-valuenow="46" aria-valuetext="46% used"><div data-slot="progress-fill"></div><div data-slot="progress-remainder"></div></div>
-        <p class="text-right">46% used</p></div>
-        <div class="grid"><div class="min-w-0"><p class="text-foreground">Monthly</p><p class="truncate" title="11/16/2026, 8:37:04 PM">Resets in 13d 17h</p></div>
-        <div class="flex h-2 w-full gap-1" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Monthly Go usage" aria-valuenow="62" aria-valuetext="62% used"><div data-slot="progress-fill"></div></div>
-        <p class="text-right">62% used</p></div></section>
-        <section class="flex" aria-label="Credits"><h2><span>Credits</span></h2></section>
+    private const string WorkspacesJson = """
+        [
+          {"id":"wrk_blocked","name":"Blocked","role":"owner","blocked":true},
+          {"id":"wrk_01KX5JXZQB94WAJNBNGER9A12C","name":"Default","role":"owner","blocked":false}
+        ]
         """;
 
-    private const string CreditsOnlyHtml = """<section class="flex" aria-label="Credits"><h2><span>Credits</span></h2></section>""";
-
-    // The page was captured at 02:47:xx local time on Nov 3.
-    private static readonly DateTime CapturedAt = new(2026, 11, 3, 2, 47, 0);
+    private const string GoStatusJson = """
+        {
+          "product": "go",
+          "access": {
+            "meters": {
+              "fiveHour": {
+                "resetsAt": "2026-11-19T23:17:05.000Z",
+                "limitMicroCents": "1000000000",
+                "usedMicroCents": "250000000"
+              },
+              "week": {
+                "resetsAt": "2026-11-23T00:00:00.000Z",
+                "limitMicroCents": "2000000000",
+                "usedMicroCents": "1500000000"
+              },
+              "month": {
+                "resetsAt": "2026-12-16T18:37:04.000Z",
+                "limitMicroCents": "4000000000",
+                "usedMicroCents": "1000000000"
+              }
+            }
+          }
+        }
+        """;
 
     private static OpenCodeProvider Build(FakeOpenCodeSession session, FakeOpenCodeApiClient api) =>
         new(session, api, NullLogger<OpenCodeProvider>.Instance);
 
-    private static FakeOpenCodeApiClient ApiWithUsage(string html, bool ready = true)
+    private static FakeOpenCodeApiClient ApiWithUsage()
     {
         var api = new FakeOpenCodeApiClient();
-        api.Pages[OpenCodeProvider.ConsoleUrl] = new RenderedPage($"https://opencode.ai/console/{Workspace}/activity", "<html></html>", true, false);
-        api.Pages[UsageUrl] = new RenderedPage(UsageUrl, html, ready, false);
+        api.When(OpenCodeProvider.WorkspacesPath, 200, WorkspacesJson);
+        api.When(OpenCodeProvider.GoStatusPath, 200, GoStatusJson);
         return api;
     }
 
@@ -55,152 +63,170 @@ public class OpenCodeProviderTests
         var provider = Build(new FakeOpenCodeSession { HasSession = false }, api);
 
         var result = await provider.GetMetricsAsync();
-        var metrics = result.Metrics;
 
-        metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Auth Required)");
+        result.Metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Auth Required)");
         result.Status.Should().Be(ProviderFetchStatus.NoSession);
-        api.NavigatedUrls.Should().BeEmpty();
+        api.Requests.Should().BeEmpty();
     }
 
     [Fact]
-    public void Parses_three_meters_from_usage_page()
+    public async Task Reads_go_meters_from_the_console_api()
     {
-        var metrics = OpenCodeProvider.ParseUsagePage(UsageHtml, CapturedAt);
-
-        metrics.Select(m => (m.Name, m.RemainingQuota, m.WindowDuration)).Should().Equal(
-            ("OpenCode Rolling", 0d, TimeSpan.FromHours(5)),
-            ("OpenCode Weekly", 54d, TimeSpan.FromDays(7)),
-            ("OpenCode Monthly", 38d, TimeSpan.FromDays(30)));
-        metrics.Should().OnlyContain(m => m.TotalQuota == 100);
-        metrics[0].ResetTime.Should().Be(new DateTime(2026, 11, 3, 3, 22, 58));
-        metrics[1].ResetTime.Should().Be(new DateTime(2026, 11, 9, 2, 0, 0));
-        metrics[2].ResetTime.Should().Be(new DateTime(2026, 11, 16, 20, 37, 4));
-    }
-
-    [Fact]
-    public void Legacy_rolling_label_still_parses()
-    {
-        var html = UsageHtml.Replace("5-hour window", "Rolling");
-
-        var metrics = OpenCodeProvider.ParseUsagePage(html, CapturedAt);
-
-        metrics.Select(m => m.Name).Should().Equal("OpenCode Rolling", "OpenCode Weekly", "OpenCode Monthly");
-        metrics[0].WindowDuration.Should().Be(TimeSpan.FromHours(5));
-    }
-
-    [Fact]
-    public void Unparseable_reset_title_falls_back_to_relative_text()
-    {
-        var html = UsageHtml.Replace("title=\"11/3/2026, 3:22:58 AM\"", "title=\"soon\"");
-
-        var metrics = OpenCodeProvider.ParseUsagePage(html, CapturedAt);
-
-        metrics[0].ResetTime.Should().Be(CapturedAt.AddMinutes(35));
-    }
-
-    [Fact]
-    public void Meter_without_reset_line_has_no_reset_time()
-    {
-        var html = UsageHtml.Replace("<p class=\"truncate\" title=\"11/3/2026, 3:22:58 AM\">Resets in 0h 35m</p>", "");
-
-        var metrics = OpenCodeProvider.ParseUsagePage(html, CapturedAt);
-
-        metrics[0].ResetTime.Should().BeNull();
-    }
-
-    [Theory]
-    [InlineData("https://opencode.ai/console/wrk_ABC123/activity", null, "wrk_ABC123")]
-    [InlineData("https://opencode.ai/console", "<a href=\"/console/workspace\"></a><a href=\"/console/wrk_XYZ/go\"></a>", "wrk_XYZ")]
-    [InlineData("https://opencode.ai/console/workspace", "<a href=\"/console/workspace\"></a>", null)]
-    public void Parses_workspace_id(string url, string? html, string? expected)
-    {
-        OpenCodeProvider.ParseWorkspaceId(url, html).Should().Be(expected);
-    }
-
-    [Fact]
-    public async Task Finds_workspace_once_then_reads_its_usage_page()
-    {
-        var api = ApiWithUsage(UsageHtml);
+        var api = ApiWithUsage();
         var session = new FakeOpenCodeSession { HasSession = true };
         var provider = Build(session, api);
 
         var result = await provider.GetMetricsAsync();
-        var metrics = result.Metrics;
+
+        result.Status.Should().Be(ProviderFetchStatus.Success);
+        result.Metrics.Select(m => (m.Name, m.RemainingQuota, m.WindowDuration)).Should().Equal(
+            ("OpenCode Rolling", 75d, TimeSpan.FromHours(5)),
+            ("OpenCode Weekly", 25d, TimeSpan.FromDays(7)),
+            ("OpenCode Monthly", 75d, TimeSpan.FromDays(30)));
+        result.Metrics.Should().OnlyContain(m => m.TotalQuota == 100);
+        result.Metrics[0].ResetTime.Should().Be(new DateTimeOffset(2026, 11, 19, 23, 17, 5, TimeSpan.Zero).LocalDateTime);
+        result.Metrics[1].ResetTime.Should().Be(new DateTimeOffset(2026, 11, 23, 0, 0, 0, TimeSpan.Zero).LocalDateTime);
+        result.Metrics[2].ResetTime.Should().Be(new DateTimeOffset(2026, 12, 16, 18, 37, 4, TimeSpan.Zero).LocalDateTime);
+        session.StatusNote.Should().BeNull();
+
+        // First the workspace list, then the status with the selected workspace as x-org-id.
+        api.Requests.Should().Equal(
+            (OpenCodeProvider.WorkspacesPath, (string?)null),
+            (OpenCodeProvider.GoStatusPath, (string?)Workspace));
+    }
+
+    [Fact]
+    public async Task Caches_the_workspace_after_the_first_poll()
+    {
+        var api = ApiWithUsage();
+        var provider = Build(new FakeOpenCodeSession { HasSession = true }, api);
+
+        await provider.GetMetricsAsync();
         await provider.GetMetricsAsync();
 
-        metrics.Select(m => m.Name).Should().Equal("OpenCode Rolling", "OpenCode Weekly", "OpenCode Monthly");
-        result.Status.Should().Be(ProviderFetchStatus.Success);
-        api.NavigatedUrls.Should().Equal(OpenCodeProvider.ConsoleUrl, UsageUrl, UsageUrl);
-        session.StatusNote.Should().BeNull();
+        api.RequestedPaths.Should().Equal(
+            OpenCodeProvider.WorkspacesPath,
+            OpenCodeProvider.GoStatusPath,
+            OpenCodeProvider.GoStatusPath);
+        api.Requests[2].OrgId.Should().Be(Workspace);
     }
 
     [Fact]
-    public async Task Rendered_page_without_go_card_means_no_subscription()
+    public async Task Skips_a_blocked_workspace()
     {
-        var api = ApiWithUsage(CreditsOnlyHtml);
+        var api = ApiWithUsage();
+        var provider = Build(new FakeOpenCodeSession { HasSession = true }, api);
+
+        await provider.GetMetricsAsync();
+
+        api.Requests[1].OrgId.Should().Be(Workspace);
+    }
+
+    [Fact]
+    public async Task Status_without_meters_means_no_go_subscription()
+    {
+        var api = new FakeOpenCodeApiClient()
+            .When(OpenCodeProvider.WorkspacesPath, 200, WorkspacesJson)
+            .When(OpenCodeProvider.GoStatusPath, 200, """{"product":"go","access":null}""");
         var session = new FakeOpenCodeSession { HasSession = true };
         var provider = Build(session, api);
 
         var result = await provider.GetMetricsAsync();
-        var metrics = result.Metrics;
 
-        metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (No Subscription)");
+        result.Metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (No Subscription)");
         result.Status.Should().Be(ProviderFetchStatus.NoData);
         session.StatusNote.Should().Be(OpenCodeProvider.NoSubscriptionNote);
-
-        api.Pages[UsageUrl] = new RenderedPage(UsageUrl, UsageHtml, true, false);
-        var recovered = await provider.GetMetricsAsync();
-        recovered.Status.Should().Be(ProviderFetchStatus.Success);
-        session.StatusNote.Should().BeNull();
     }
 
     [Fact]
-    public async Task Go_card_still_loading_is_an_error_not_no_subscription()
+    public async Task Unauthorized_clears_the_session()
     {
-        // Skeleton Go card (no progress bars yet) beside a filled Credits card.
-        const string loading = """<section aria-label="Go usage"><div aria-busy="true"><p>Rolling</p><div class="h-2"></div></div></section>""" + CreditsOnlyHtml;
+        var api = new FakeOpenCodeApiClient().When(OpenCodeProvider.WorkspacesPath, 401, """{"_tag":"Unauthorized"}""");
         var session = new FakeOpenCodeSession { HasSession = true };
-        var provider = Build(session, ApiWithUsage(loading));
-
-        var result = await provider.GetMetricsAsync();
-        var metrics = result.Metrics;
-
-        metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Error Fetching)");
-        result.Status.Should().Be(ProviderFetchStatus.Error);
-        session.StatusNote.Should().Be(OpenCodeProvider.ErrorNote);
-    }
-
-    [Fact]
-    public async Task Bounced_to_login_clears_session()
-    {
-        var session = new FakeOpenCodeSession { HasSession = true };
-        var api = new FakeOpenCodeApiClient();
-        api.Pages[OpenCodeProvider.ConsoleUrl] = new RenderedPage("https://opencode.ai/console/login", null, false, true);
         var provider = Build(session, api);
 
         var result = await provider.GetMetricsAsync();
-        var metrics = result.Metrics;
 
-        metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Session Expired)");
+        result.Metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Session Expired)");
         result.Status.Should().Be(ProviderFetchStatus.SessionExpired);
         session.HasSession.Should().BeFalse();
     }
 
     [Fact]
-    public async Task Page_that_never_renders_surfaces_error_keeps_session_and_rediscovers_workspace()
+    public async Task Failed_status_returns_an_error_then_recovers()
     {
+        var api = new FakeOpenCodeApiClient().When(OpenCodeProvider.WorkspacesPath, 200, WorkspacesJson)
+            .When(OpenCodeProvider.GoStatusPath, 500, "boom");
         var session = new FakeOpenCodeSession { HasSession = true };
-        var api = ApiWithUsage("<html></html>", ready: false);
         var provider = Build(session, api);
 
-        var result = await provider.GetMetricsAsync();
-        var metrics = result.Metrics;
-        await provider.GetMetricsAsync();
-
-        metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Error Fetching)");
-        result.Status.Should().Be(ProviderFetchStatus.Error);
-        session.HasSession.Should().BeTrue();
+        var failed = await provider.GetMetricsAsync();
+        failed.Metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Error Fetching)");
+        failed.Status.Should().Be(ProviderFetchStatus.Error);
         session.StatusNote.Should().Be(OpenCodeProvider.ErrorNote);
-        api.NavigatedUrls.Should().Equal(OpenCodeProvider.ConsoleUrl, UsageUrl, OpenCodeProvider.ConsoleUrl, UsageUrl);
+        session.HasSession.Should().BeTrue();
+
+        api.When(OpenCodeProvider.GoStatusPath, 200, GoStatusJson);
+        var recovered = await provider.GetMetricsAsync();
+
+        recovered.Status.Should().Be(ProviderFetchStatus.Success);
+        session.StatusNote.Should().BeNull();
+        api.RequestedPaths.Should().Equal(
+            OpenCodeProvider.WorkspacesPath,
+            OpenCodeProvider.GoStatusPath,
+            OpenCodeProvider.WorkspacesPath,
+            OpenCodeProvider.GoStatusPath);
+    }
+
+    [Fact]
+    public async Task Malformed_json_returns_an_error_instead_of_throwing()
+    {
+        var api = new FakeOpenCodeApiClient().When(OpenCodeProvider.WorkspacesPath, 200, "{not json");
+        var provider = Build(new FakeOpenCodeSession { HasSession = true }, api);
+
+        var result = await provider.GetMetricsAsync();
+
+        result.Metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Error Fetching)");
+        result.Status.Should().Be(ProviderFetchStatus.Error);
+    }
+
+    [Fact]
+    public void Skips_meters_without_a_usable_limit()
+    {
+        var json = """
+            {"access":{"meters":{
+              "fiveHour":{"limitMicroCents":"0","usedMicroCents":"1"},
+              "week":{"limitMicroCents":null,"usedMicroCents":"1"},
+              "month":{"limitMicroCents":"100","usedMicroCents":"25"}
+            }}}
+            """;
+
+        var metrics = OpenCodeProvider.ParseGoStatus(json);
+
+        metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode Monthly");
+        metrics[0].RemainingQuota.Should().Be(75);
+    }
+
+    [Fact]
+    public void Parses_numeric_limit_and_usage_values()
+    {
+        var json = """
+            {"access":{"meters":{
+              "fiveHour":{"limitMicroCents":1000,"usedMicroCents":250}
+            }}}
+            """;
+
+        var metrics = OpenCodeProvider.ParseGoStatus(json);
+
+        metrics.Should().ContainSingle();
+        metrics[0].RemainingQuota.Should().Be(75);
+        metrics[0].ResetTime.Should().BeNull();
+    }
+
+    [Fact]
+    public void Workspace_list_without_ids_is_empty()
+    {
+        OpenCodeProvider.ParseFirstWorkspaceId("""[{"name":"Default"}]""").Should().BeNull();
+        OpenCodeProvider.ParseFirstWorkspaceId("""{"id":"wrk_x"}""").Should().BeNull();
     }
 }

@@ -2,8 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Net;
-using System.Text.RegularExpressions;
+using System.Text.Json;
 using System.Threading.Tasks;
 using AiMeter.Models;
 using AiMeter.Services;
@@ -12,52 +11,35 @@ using Microsoft.Extensions.Logging;
 namespace AiMeter.Providers;
 
 /// <summary>
-/// Reports opencode.ai "Go" usage. Until the user logs in, this makes no network call and
-/// spins up no WebView2 — it just returns the "Auth Required" placeholder, so registering it
-/// is free.
+/// Reports opencode.ai "Go" usage from the Console's JSON API. The console's HTML routes are
+/// now only a client-rendered shell, so the provider reads the same endpoints the console's
+/// own "My usage" page calls:
+///   GET /console/api/user/workspaces   → [{ id, name, blocked, … }]
+///   GET /console/api/go/status?fresh=true, header x-org-id: wrk_…
+///                                      → { access: { meters: { fiveHour, week, month } } }
+/// Each meter carries limit/used microcents and an ISO reset timestamp.
 ///
-/// The Go usage lives on the OpenCode Console's per-workspace "My usage" page
-/// (opencode.ai/console/{workspace}/activity/overview). The console no longer exposes a
-/// stable JSON endpoint for it, so the provider loads that page in the logged-in hidden
-/// browser and reads the meters it renders. Each is an accessible progress bar:
-///   &lt;p title="11/3/2026, 3:22:58 AM"&gt;Resets in 0h 35m&lt;/p&gt;
-///   &lt;div role="progressbar" aria-label="Rolling Go usage" aria-valuenow="100" …&gt;
-/// The workspace id comes from where /console redirects to (or links from it).
+/// Requests run through the logged-in hidden WebView2 (see <see cref="OpenCodeApiClient"/>),
+/// so the console's own session cookie and bot protection apply.
 /// </summary>
 public class OpenCodeProvider : IProvider
 {
     public string Name => "OpenCode";
 
-    public const string ConsoleUrl = "https://opencode.ai/console";
-    public static string UsagePageUrl(string workspaceId) => $"{ConsoleUrl}/{workspaceId}/activity/overview";
+    public const string WorkspacesPath = "/console/api/user/workspaces";
+    public const string GoStatusPath = "/console/api/go/status?fresh=true";
 
-    // Ready once the Go meters render. The Go card first renders as an aria-busy skeleton (no
-    // progress bars) next to an already-filled Credits card, so Credits alone only counts as
-    // ready when there is no Go card at all (no subscription) and nothing is still loading.
-    private const string UsageReadyCheck =
-        """document.querySelector('[role="progressbar"][aria-label$="Go usage"]') || (document.querySelector('section[aria-label="Credits"]') && !document.querySelector('section[aria-label="Go usage"], [aria-busy="true"]'))""";
-    private const string GoCardMarker = "aria-label=\"Go usage\"";
-    private const string WorkspaceReadyCheck =
-        """/\/console\/[a-z]+_[A-Za-z0-9]+/.test(location.pathname) || document.querySelector('a[href*="/activity"]')""";
-
+    private const string NoWorkspaceName = "OpenCode (No Workspace)";
     private const string NoSubscriptionName = "OpenCode (No Subscription)";
     public const string NoSubscriptionNote = "No active Go subscription";
     public const string ErrorNote = "Usage unavailable (see log)";
 
-    // Meter labels on the page → widget names (unchanged so users' saved selections/labels/
-    // colors keep applying). The console renders the 5-hour meter as "5-hour window" (its
-    // aria-label is "5-hour window Go usage"); "Rolling" is the older label it shipped with.
-    private static readonly (string Label, string Name, TimeSpan Duration)[] Meters =
+    private static readonly (string JsonKey, string Name, TimeSpan Duration)[] Meters =
     {
-        ("5-hour window", "OpenCode Rolling", TimeSpan.FromHours(5)),
-        ("Rolling",       "OpenCode Rolling", TimeSpan.FromHours(5)),
-        ("Weekly",        "OpenCode Weekly",  TimeSpan.FromDays(7)),
-        ("Monthly",       "OpenCode Monthly", TimeSpan.FromDays(30)),
+        ("fiveHour", "OpenCode Rolling", TimeSpan.FromHours(5)),
+        ("week",     "OpenCode Weekly",  TimeSpan.FromDays(7)),
+        ("month",    "OpenCode Monthly", TimeSpan.FromDays(30)),
     };
-
-    private static readonly Regex WorkspaceIdPattern = new(@"/console/(?<id>[a-z]+_[A-Za-z0-9]+)(?:[/?#""]|$)");
-    private static readonly Regex ProgressBarTag = new(@"<div\b[^>]*\brole=""progressbar""[^>]*>");
-    private static readonly Regex ResetLine = new(@"<p\b[^>]*\btitle=""(?<title>[^""]*)""[^>]*>(?<text>[^<]*)</p>");
 
     private readonly IOpenCodeSession _session;
     private readonly IOpenCodeApiClient _apiClient;
@@ -82,57 +64,69 @@ public class OpenCodeProvider : IProvider
         {
             if (_workspaceId is null)
             {
-                var console = await _apiClient.ReadRenderedPageAsync(ConsoleUrl, WorkspaceReadyCheck);
-                if (console.BouncedToLogin) return Expired(console.FinalUrl);
+                var (workspaceStatus, workspaceBody) = await _apiClient.GetAsync(WorkspacesPath);
+                if (workspaceStatus == 401) return Expired($"{WorkspacesPath} returned 401");
+                if (workspaceStatus != 200 || string.IsNullOrWhiteSpace(workspaceBody))
+                {
+                    _logger.LogWarning("OpenCode: workspace lookup failed (HTTP {Status}, {Length} chars)",
+                        workspaceStatus, workspaceBody?.Length ?? 0);
+                    return Error(NoWorkspaceName);
+                }
 
-                _workspaceId = ParseWorkspaceId(console.FinalUrl, console.Html);
+                _workspaceId = ParseFirstWorkspaceId(workspaceBody);
                 if (_workspaceId is null)
                 {
-                    _logger.LogWarning("OpenCode: no workspace found (page {Url}, {Length} chars)", console.FinalUrl, console.Html?.Length ?? 0);
-                    return Report(new[] { Placeholder("OpenCode (Error Fetching)") }, ProviderFetchStatus.Error, ErrorNote);
+                    _logger.LogWarning("OpenCode: no workspace in {Body}", Shorten(workspaceBody));
+                    return Error(NoWorkspaceName);
                 }
             }
 
-            var page = await _apiClient.ReadRenderedPageAsync(UsagePageUrl(_workspaceId), UsageReadyCheck);
-            if (page.BouncedToLogin) return Expired(page.FinalUrl);
+            var (status, body) = await _apiClient.GetAsync(GoStatusPath, _workspaceId);
+            if (status == 401) return Expired($"{GoStatusPath} returned 401");
+            if (status != 200 || string.IsNullOrWhiteSpace(body))
+            {
+                _logger.LogWarning("OpenCode: Go status failed for {Workspace} (HTTP {Status}, {Length} chars)",
+                    _workspaceId, status, body?.Length ?? 0);
+                _workspaceId = null;
+                return Error("OpenCode (Error Fetching)");
+            }
 
-            var metrics = page.Html is not null ? ParseUsagePage(page.Html) : new List<UsageMetric>();
+            var metrics = ParseGoStatus(body);
             if (metrics.Count > 0)
             {
-                _logger.LogInformation("OpenCode usage ({Ws}): {Meters}", _workspaceId,
+                _logger.LogInformation("OpenCode usage ({Workspace}): {Meters}", _workspaceId,
                     string.Join(", ", metrics.Select(m => $"{m.Name} {100 - m.RemainingQuota:0.#}% used, resets {m.ResetTime:g}")));
                 return Report(metrics, ProviderFetchStatus.Success, null);
             }
-            if (page.Ready && page.Html?.Contains(GoCardMarker, StringComparison.Ordinal) == false)
-            {
-                // The page rendered (Credits card) but has no Go card.
-                return Report(new[] { Placeholder(NoSubscriptionName) }, ProviderFetchStatus.NoData, NoSubscriptionNote);
-            }
 
-            // Log once when the problem appears rather than on every poll, and re-discover the
-            // workspace next time in case it moved.
-            if (_session.StatusNote != ErrorNote)
-            {
-                _logger.LogWarning("OpenCode: no Go usage on {Url} (ended at {Final}, ready {Ready}, {Length} chars, Go card {GoCard})",
-                    UsagePageUrl(_workspaceId), page.FinalUrl, page.Ready, page.Html?.Length ?? 0,
-                    page.Html?.Contains(GoCardMarker, StringComparison.Ordinal) == true);
-            }
-            _workspaceId = null;
-            return Report(new[] { Placeholder("OpenCode (Error Fetching)") }, ProviderFetchStatus.Error, ErrorNote);
+            // A 200 response with no meters means the workspace has no active Go subscription.
+            _logger.LogInformation("OpenCode: workspace {Workspace} has no Go meters", _workspaceId);
+            return Report(new[] { Placeholder(NoSubscriptionName) }, ProviderFetchStatus.NoData, NoSubscriptionNote);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "OpenCode: could not parse the console response");
+            return Error("OpenCode (Error Fetching)");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "OpenCode usage fetch threw an unhandled exception");
-            return Report(new[] { Placeholder("OpenCode (Error Fetching)") }, ProviderFetchStatus.Error, ErrorNote);
+            return Error("OpenCode (Error Fetching)");
         }
     }
 
-    private ProviderFetchResult Expired(string url)
+    private ProviderFetchResult Expired(string reason)
     {
-        _logger.LogWarning("OpenCode session expired (page {Url}); clearing", url);
+        _logger.LogWarning("OpenCode session expired ({Reason}); clearing", reason);
         _workspaceId = null;
         _session.Clear();
         return new ProviderFetchResult(new[] { Placeholder("OpenCode (Session Expired)") }, ProviderFetchStatus.SessionExpired);
+    }
+
+    private ProviderFetchResult Error(string placeholderName)
+    {
+        _workspaceId = null;
+        return Report(new[] { Placeholder(placeholderName) }, ProviderFetchStatus.Error, ErrorNote);
     }
 
     /// <summary>Publishes the account status note shown in Settings, then wraps the metrics and status.</summary>
@@ -142,89 +136,92 @@ public class OpenCodeProvider : IProvider
         return new ProviderFetchResult(metrics, status);
     }
 
-    /// <summary>The console workspace id (e.g. wrk_…), from the URL /console settled on, else its first workspace link.</summary>
-    public static string? ParseWorkspaceId(string url, string? html)
+    /// <summary>
+    /// The first non-blocked workspace id from /console/api/user/workspaces. The endpoint also
+    /// lists team workspaces the user can switch to; arrival order is the console's own.
+    /// </summary>
+    public static string? ParseFirstWorkspaceId(string json)
     {
-        var match = WorkspaceIdPattern.Match(url);
-        if (!match.Success && html is not null) match = WorkspaceIdPattern.Match(html);
-        return match.Success ? match.Groups["id"].Value : null;
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.ValueKind != JsonValueKind.Array) return null;
+
+        string? fallback = null;
+        foreach (var workspace in doc.RootElement.EnumerateArray())
+        {
+            if (!workspace.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String) continue;
+
+            var value = id.GetString();
+            if (string.IsNullOrWhiteSpace(value)) continue;
+            fallback ??= value;
+
+            if (!workspace.TryGetProperty("blocked", out var blocked) || blocked.ValueKind != JsonValueKind.True)
+            {
+                return value;
+            }
+        }
+        return fallback;
     }
 
     /// <summary>
-    /// Reads the Rolling/Weekly/Monthly meters from the rendered "My usage" page. aria-valuenow
-    /// is percent used; the reset time is the absolute title of the "Resets in …" line just
-    /// before each bar, falling back to the relative text when the title won't parse.
+    /// Maps the Go status payload's fiveHour/week/month meters to widget metrics. Limits and
+    /// usage are microcent strings; a meter with a missing/zero limit is skipped. Reset times
+    /// are ISO-8601 timestamps in UTC and are exposed as local <see cref="UsageMetric.ResetTime"/>.
     /// </summary>
-    public static List<UsageMetric> ParseUsagePage(string html) => ParseUsagePage(html, DateTime.Now);
-
-    public static List<UsageMetric> ParseUsagePage(string html, DateTime now)
+    public static List<UsageMetric> ParseGoStatus(string json)
     {
         var metrics = new List<UsageMetric>();
-        // Start at the Go card so a meter without a reset line can't borrow an unrelated title.
-        var rowStart = Math.Max(0, html.IndexOf(GoCardMarker, StringComparison.Ordinal));
-        foreach (Match bar in ProgressBarTag.Matches(html))
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("access", out var access)
+            || access.ValueKind != JsonValueKind.Object
+            || !access.TryGetProperty("meters", out var meters)
+            || meters.ValueKind != JsonValueKind.Object)
         {
-            var label = Attribute(bar.Value, "aria-label");
-            var meter = Meters.FirstOrDefault(m => label == $"{m.Label} Go usage");
-            var before = html[rowStart..bar.Index];
-            rowStart = bar.Index + bar.Length;
-            if (meter.Name is null || metrics.Any(m => m.Name == meter.Name)) continue;
-            if (!double.TryParse(Attribute(bar.Value, "aria-valuenow"), NumberStyles.Float, CultureInfo.InvariantCulture, out var percentUsed)) continue;
-            percentUsed = Math.Clamp(percentUsed, 0, 100);
+            return metrics;
+        }
 
-            var reset = ResetLine.Matches(before).LastOrDefault();
+        foreach (var (key, name, duration) in Meters)
+        {
+            if (!meters.TryGetProperty(key, out var meter) || meter.ValueKind != JsonValueKind.Object) continue;
+            if (!TryReadNumber(meter, "limitMicroCents", out var limit) || limit <= 0) continue;
+            if (!TryReadNumber(meter, "usedMicroCents", out var used)) continue;
+
+            var remaining = Math.Clamp(100d * (1 - used / limit), 0, 100);
+            DateTime? resetTime = null;
+            if (meter.TryGetProperty("resetsAt", out var resets)
+                && resets.ValueKind == JsonValueKind.String
+                && DateTimeOffset.TryParse(resets.GetString(), CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind, out var reset))
+            {
+                resetTime = reset.LocalDateTime;
+            }
+
             metrics.Add(new UsageMetric
             {
-                Name = meter.Name,
+                Name = name,
                 TotalQuota = 100,
-                RemainingQuota = 100 - percentUsed,
-                ResetTime = reset is null ? null
-                    : ParseResetTime(WebUtility.HtmlDecode(reset.Groups["title"].Value), WebUtility.HtmlDecode(reset.Groups["text"].Value), now),
-                WindowDuration = meter.Duration,
+                RemainingQuota = remaining,
+                ResetTime = resetTime,
+                WindowDuration = duration,
             });
         }
         return metrics;
     }
 
-    private static string? Attribute(string tag, string name)
+    private static bool TryReadNumber(JsonElement parent, string property, out double value)
     {
-        var m = Regex.Match(tag, $@"\b{Regex.Escape(name)}=""(?<v>[^""]*)""");
-        return m.Success ? WebUtility.HtmlDecode(m.Groups["v"].Value) : null;
+        value = 0;
+        if (!parent.TryGetProperty(property, out var element)) return false;
+
+        return element.ValueKind switch
+        {
+            JsonValueKind.Number => element.TryGetDouble(out value),
+            JsonValueKind.String => double.TryParse(element.GetString(), NumberStyles.Float,
+                CultureInfo.InvariantCulture, out value),
+            _ => false,
+        };
     }
 
-    // The title is the browser's toLocaleString(), whose day/month order depends on the
-    // WebView's locale; the relative "Resets in 5d 23h" text settles which reading is right.
-    private static DateTime? ParseResetTime(string title, string text, DateTime now)
-    {
-        DateTime? relative = null;
-        var parts = Regex.Matches(text, @"(?<n>\d+)\s*(?<u>[dhms])\b");
-        if (parts.Count > 0)
-        {
-            var span = TimeSpan.Zero;
-            foreach (Match p in parts)
-            {
-                var n = int.Parse(p.Groups["n"].Value, CultureInfo.InvariantCulture);
-                span += p.Groups["u"].Value switch
-                {
-                    "d" => TimeSpan.FromDays(n),
-                    "h" => TimeSpan.FromHours(n),
-                    "m" => TimeSpan.FromMinutes(n),
-                    _ => TimeSpan.FromSeconds(n),
-                };
-            }
-            relative = now + span;
-        }
-
-        foreach (var culture in new[] { CultureInfo.CurrentCulture, CultureInfo.GetCultureInfo("en-US"), CultureInfo.GetCultureInfo("en-GB") })
-        {
-            if (DateTime.TryParse(title, culture, DateTimeStyles.AssumeLocal, out var absolute)
-                && (relative is null || Math.Abs((absolute - relative.Value).TotalHours) < 1.5))
-            {
-                return absolute;
-            }
-        }
-        return relative;
-    }
+    private static string Shorten(string body) => body.Length <= 300 ? body : body[..300] + "…";
 
     private static UsageMetric Placeholder(string name) => new() { Name = name, TotalQuota = 100, RemainingQuota = 0 };
 }

@@ -121,9 +121,10 @@ public class ClaudeApiClient : IClaudeApiClient, IDisposable
             _hostWindow.Content = _webView;
             _hostWindow.Show();
 
-            var userDataFolder = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "AiMeter", "WebView2");
+            var overrideFolder = Environment.GetEnvironmentVariable("AIMETER_WEBVIEW2_FOLDER");
+            var userDataFolder = string.IsNullOrWhiteSpace(overrideFolder)
+                ? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AiMeter", "WebView2")
+                : overrideFolder;
 
             await WebViewInitLock.WaitAsync();
             try
