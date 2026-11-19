@@ -54,6 +54,13 @@ public class ClaudeWebProvider : IProvider
             var orgId = orgsDoc.RootElement[0].GetProperty("uuid").GetString();
 
             var (usageStatus, usageBody) = await _apiClient.GetAsync($"/api/organizations/{orgId}/usage");
+            if (usageStatus is 401 or 403)
+            {
+                _logger.LogWarning("Claude session expired (status {Status}); clearing", usageStatus);
+                _session.Clear();
+                metrics.Add(new UsageMetric { Name = "Session Expired", TotalQuota = 100, RemainingQuota = 0 });
+                return new ProviderFetchResult(metrics, ProviderFetchStatus.SessionExpired);
+            }
             if (usageStatus != 200 || usageBody is null)
             {
                 _logger.LogWarning("Claude usage request for org {OrgId} failed with status {Status}", orgId, usageStatus);

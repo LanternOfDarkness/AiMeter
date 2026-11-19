@@ -57,4 +57,19 @@ public class StaleAgeConverterTests
     {
         Age(Now.AddHours(-24), Now).Should().Be("1d ago");
     }
+
+    [Fact]
+    public void Utc_now_with_utc_timestamp_is_minutes()
+    {
+        Age(Now.AddMinutes(-5), Now).Should().Be("5m ago");
+    }
+
+    [Fact]
+    public void Local_now_with_utc_timestamp_does_not_shift_age()
+    {
+        var localNow = new DateTime(2026, 11, 19, 12, 0, 0, DateTimeKind.Local);
+        var lastUtc = localNow.ToUniversalTime().AddMinutes(-5);
+
+        Age(lastUtc, localNow).Should().Be("5m ago");
+    }
 }

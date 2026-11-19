@@ -14,7 +14,7 @@ public class StaleAgeConverter : IMultiValueConverter
         if (values.Length < 2 || values[0] is not DateTime lastUpdated || values[1] is not DateTime now)
             return string.Empty;
 
-        var age = now - lastUpdated;
+        var age = now.ToUniversalTime() - lastUpdated.ToUniversalTime();
         if (age < TimeSpan.Zero)
             age = TimeSpan.Zero;
 

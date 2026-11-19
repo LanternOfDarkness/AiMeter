@@ -131,6 +131,22 @@ public class ClaudeWebProviderTests
     }
 
     [Fact]
+    public async Task Usage_401_clears_session_and_returns_session_expired()
+    {
+        var session = new FakeClaudeSession { HasSession = true };
+        var api = new FakeClaudeApiClient()
+            .When("/api/organizations", 200, OrgsJson)
+            .When("/api/organizations/org_12345/usage", 401, null);
+        var provider = Build(session, api);
+
+        var result = await provider.GetMetricsAsync();
+
+        result.Status.Should().Be(ProviderFetchStatus.SessionExpired);
+        result.Metrics.Should().ContainSingle().Which.Name.Should().Be("Session Expired");
+        session.HasSession.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Parses_limits_and_extra_usage()
     {
         var api = new FakeClaudeApiClient()
