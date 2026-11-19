@@ -122,9 +122,11 @@ public class ClaudeWebProviderTests
         var api = new FakeClaudeApiClient();
         var provider = Build(new FakeClaudeSession { HasSession = false }, api);
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
 
         metrics.Should().ContainSingle().Which.Name.Should().Be("Auth Required");
+        result.Status.Should().Be(ProviderFetchStatus.NoSession);
         api.RequestedPaths.Should().BeEmpty();
     }
 
@@ -136,9 +138,11 @@ public class ClaudeWebProviderTests
             .When("/api/organizations/org_12345/usage", 200, UsageJsonWithExtraUsage);
         var provider = Build(new FakeClaudeSession { HasSession = true }, api);
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
 
         metrics.Should().HaveCount(3);
+        result.Status.Should().Be(ProviderFetchStatus.Success);
         metrics.Single(m => m.Name == "Claude Session").RemainingQuota.Should().Be(80);
         metrics.Single(m => m.Name == "Claude Weekly").RemainingQuota.Should().Be(55);
 
@@ -165,7 +169,8 @@ public class ClaudeWebProviderTests
             .When("/api/organizations/org_12345/usage", 200, UsageJsonWithTopLevelExtraUsageOnly);
         var provider = Build(new FakeClaudeSession { HasSession = true }, api);
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
 
         metrics.Should().HaveCount(2);
         metrics.Single(m => m.Name == "Claude Session").RemainingQuota.Should().Be(70);
@@ -193,7 +198,8 @@ public class ClaudeWebProviderTests
             .When("/api/organizations/org_12345/usage", 200, jsonWithNullLimit);
         var provider = Build(new FakeClaudeSession { HasSession = true }, api);
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
 
         metrics.Should().HaveCount(2);
         metrics.Single(m => m.Name == "Claude Session").RemainingQuota.Should().Be(90);
@@ -212,7 +218,8 @@ public class ClaudeWebProviderTests
             .When("/api/organizations/org_12345/usage", 200, RealLimitedExtraUsageJson);
         var provider = Build(new FakeClaudeSession { HasSession = true }, api);
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
 
         var extra = metrics.Single(m => m.Name == "Claude Extra Usage");
         extra.RemainingQuota.Should().BeApproximately(23.6857, 0.01);
@@ -233,7 +240,8 @@ public class ClaudeWebProviderTests
             .When("/api/organizations/org_12345/usage", 200, UnlimitedExtraUsageWithBalanceJson);
         var provider = Build(new FakeClaudeSession { HasSession = true }, api);
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
 
         var extra = metrics.Single(m => m.Name == "Claude Extra Usage");
         extra.IsMoneyMetric.Should().BeTrue();
@@ -253,7 +261,8 @@ public class ClaudeWebProviderTests
             .When("/api/organizations/org_12345/usage", 200, UnlimitedExtraUsageWithoutBalanceJson);
         var provider = Build(new FakeClaudeSession { HasSession = true }, api);
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
 
         var extra = metrics.Single(m => m.Name == "Claude Extra Usage");
         extra.IsUnbounded.Should().BeTrue();
@@ -269,8 +278,35 @@ public class ClaudeWebProviderTests
             .When("/api/organizations/org_12345/usage", 200, ExtraUsageDisabledJson);
         var provider = Build(new FakeClaudeSession { HasSession = true }, api);
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
 
         metrics.Should().NotContain(m => m.Name == "Claude Extra Usage");
+    }
+
+    [Fact]
+    public async Task Session_expired_clears_session_and_reports_it()
+    {
+        var api = new FakeClaudeApiClient().When("/api/organizations", 401, null);
+        var session = new FakeClaudeSession { HasSession = true };
+        var provider = Build(session, api);
+
+        var result = await provider.GetMetricsAsync();
+
+        result.Status.Should().Be(ProviderFetchStatus.SessionExpired);
+        result.Metrics.Should().ContainSingle().Which.Name.Should().Be("Session Expired");
+        session.HasSession.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Http_failure_reports_error()
+    {
+        var api = new FakeClaudeApiClient().When("/api/organizations", 500, null);
+        var provider = Build(new FakeClaudeSession { HasSession = true }, api);
+
+        var result = await provider.GetMetricsAsync();
+
+        result.Status.Should().Be(ProviderFetchStatus.Error);
+        result.Metrics.Should().ContainSingle().Which.Name.Should().Be("Error Fetching");
     }
 }

@@ -16,11 +16,13 @@ public sealed class FakeProvider : IProvider
 
     public IReadOnlyList<UsageMetric> Metrics { get; set; } = new List<UsageMetric>();
 
+    public ProviderFetchStatus Status { get; set; } = ProviderFetchStatus.Success;
+
     public int GetMetricsAsyncCallCount { get; private set; }
 
-    public Task<IReadOnlyList<UsageMetric>> GetMetricsAsync()
+    public Task<ProviderFetchResult> GetMetricsAsync()
     {
         GetMetricsAsyncCallCount++;
-        return Task.FromResult(Metrics);
+        return Task.FromResult(new ProviderFetchResult(Metrics, Status));
     }
 }

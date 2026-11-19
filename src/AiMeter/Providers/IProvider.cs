@@ -7,5 +7,5 @@ namespace AiMeter.Providers;
 public interface IProvider
 {
     string Name { get; }
-    Task<IReadOnlyList<UsageMetric>> GetMetricsAsync();
+    Task<ProviderFetchResult> GetMetricsAsync();
 }

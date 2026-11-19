@@ -71,11 +71,11 @@ public class OpenCodeProvider : IProvider
         _logger = logger;
     }
 
-    public async Task<IReadOnlyList<UsageMetric>> GetMetricsAsync()
+    public async Task<ProviderFetchResult> GetMetricsAsync()
     {
         if (!_session.HasSession)
         {
-            return new[] { Placeholder("OpenCode (Auth Required)") };
+            return new ProviderFetchResult(new[] { Placeholder("OpenCode (Auth Required)") }, ProviderFetchStatus.NoSession);
         }
 
         try
@@ -89,7 +89,7 @@ public class OpenCodeProvider : IProvider
                 if (_workspaceId is null)
                 {
                     _logger.LogWarning("OpenCode: no workspace found (page {Url}, {Length} chars)", console.FinalUrl, console.Html?.Length ?? 0);
-                    return Report(new[] { Placeholder("OpenCode (Error Fetching)") }, ErrorNote);
+                    return Report(new[] { Placeholder("OpenCode (Error Fetching)") }, ProviderFetchStatus.Error, ErrorNote);
                 }
             }
 
@@ -101,12 +101,12 @@ public class OpenCodeProvider : IProvider
             {
                 _logger.LogInformation("OpenCode usage ({Ws}): {Meters}", _workspaceId,
                     string.Join(", ", metrics.Select(m => $"{m.Name} {100 - m.RemainingQuota:0.#}% used, resets {m.ResetTime:g}")));
-                return Report(metrics, null);
+                return Report(metrics, ProviderFetchStatus.Success, null);
             }
             if (page.Ready && page.Html?.Contains(GoCardMarker, StringComparison.Ordinal) == false)
             {
                 // The page rendered (Credits card) but has no Go card.
-                return Report(new[] { Placeholder(NoSubscriptionName) }, NoSubscriptionNote);
+                return Report(new[] { Placeholder(NoSubscriptionName) }, ProviderFetchStatus.NoData, NoSubscriptionNote);
             }
 
             // Log once when the problem appears rather than on every poll, and re-discover the
@@ -118,28 +118,28 @@ public class OpenCodeProvider : IProvider
                     page.Html?.Contains(GoCardMarker, StringComparison.Ordinal) == true);
             }
             _workspaceId = null;
-            return Report(new[] { Placeholder("OpenCode (Error Fetching)") }, ErrorNote);
+            return Report(new[] { Placeholder("OpenCode (Error Fetching)") }, ProviderFetchStatus.Error, ErrorNote);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "OpenCode usage fetch threw an unhandled exception");
-            return Report(new[] { Placeholder("OpenCode (Error Fetching)") }, ErrorNote);
+            return Report(new[] { Placeholder("OpenCode (Error Fetching)") }, ProviderFetchStatus.Error, ErrorNote);
         }
     }
 
-    private IReadOnlyList<UsageMetric> Expired(string url)
+    private ProviderFetchResult Expired(string url)
     {
         _logger.LogWarning("OpenCode session expired (page {Url}); clearing", url);
         _workspaceId = null;
         _session.Clear();
-        return new[] { Placeholder("OpenCode (Session Expired)") };
+        return new ProviderFetchResult(new[] { Placeholder("OpenCode (Session Expired)") }, ProviderFetchStatus.SessionExpired);
     }
 
-    /// <summary>Publishes the account status note shown in Settings, then passes the metrics through.</summary>
-    private IReadOnlyList<UsageMetric> Report(IReadOnlyList<UsageMetric> metrics, string? note)
+    /// <summary>Publishes the account status note shown in Settings, then wraps the metrics and status.</summary>
+    private ProviderFetchResult Report(IReadOnlyList<UsageMetric> metrics, ProviderFetchStatus status, string? note)
     {
         _session.SetStatusNote(note);
-        return metrics;
+        return new ProviderFetchResult(metrics, status);
     }
 
     /// <summary>The console workspace id (e.g. wrk_…), from the URL /console settled on, else its first workspace link.</summary>

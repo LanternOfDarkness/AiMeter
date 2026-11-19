@@ -54,9 +54,11 @@ public class OpenCodeProviderTests
         var api = new FakeOpenCodeApiClient();
         var provider = Build(new FakeOpenCodeSession { HasSession = false }, api);
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
 
         metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Auth Required)");
+        result.Status.Should().Be(ProviderFetchStatus.NoSession);
         api.NavigatedUrls.Should().BeEmpty();
     }
 
@@ -122,10 +124,12 @@ public class OpenCodeProviderTests
         var session = new FakeOpenCodeSession { HasSession = true };
         var provider = Build(session, api);
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
         await provider.GetMetricsAsync();
 
         metrics.Select(m => m.Name).Should().Equal("OpenCode Rolling", "OpenCode Weekly", "OpenCode Monthly");
+        result.Status.Should().Be(ProviderFetchStatus.Success);
         api.NavigatedUrls.Should().Equal(OpenCodeProvider.ConsoleUrl, UsageUrl, UsageUrl);
         session.StatusNote.Should().BeNull();
     }
@@ -137,13 +141,16 @@ public class OpenCodeProviderTests
         var session = new FakeOpenCodeSession { HasSession = true };
         var provider = Build(session, api);
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
 
         metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (No Subscription)");
+        result.Status.Should().Be(ProviderFetchStatus.NoData);
         session.StatusNote.Should().Be(OpenCodeProvider.NoSubscriptionNote);
 
         api.Pages[UsageUrl] = new RenderedPage(UsageUrl, UsageHtml, true, false);
-        await provider.GetMetricsAsync();
+        var recovered = await provider.GetMetricsAsync();
+        recovered.Status.Should().Be(ProviderFetchStatus.Success);
         session.StatusNote.Should().BeNull();
     }
 
@@ -155,9 +162,11 @@ public class OpenCodeProviderTests
         var session = new FakeOpenCodeSession { HasSession = true };
         var provider = Build(session, ApiWithUsage(loading));
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
 
         metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Error Fetching)");
+        result.Status.Should().Be(ProviderFetchStatus.Error);
         session.StatusNote.Should().Be(OpenCodeProvider.ErrorNote);
     }
 
@@ -169,9 +178,11 @@ public class OpenCodeProviderTests
         api.Pages[OpenCodeProvider.ConsoleUrl] = new RenderedPage("https://opencode.ai/console/login", null, false, true);
         var provider = Build(session, api);
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
 
         metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Session Expired)");
+        result.Status.Should().Be(ProviderFetchStatus.SessionExpired);
         session.HasSession.Should().BeFalse();
     }
 
@@ -182,10 +193,12 @@ public class OpenCodeProviderTests
         var api = ApiWithUsage("<html></html>", ready: false);
         var provider = Build(session, api);
 
-        var metrics = await provider.GetMetricsAsync();
+        var result = await provider.GetMetricsAsync();
+        var metrics = result.Metrics;
         await provider.GetMetricsAsync();
 
         metrics.Should().ContainSingle().Which.Name.Should().Be("OpenCode (Error Fetching)");
+        result.Status.Should().Be(ProviderFetchStatus.Error);
         session.HasSession.Should().BeTrue();
         session.StatusNote.Should().Be(OpenCodeProvider.ErrorNote);
         api.NavigatedUrls.Should().Equal(OpenCodeProvider.ConsoleUrl, UsageUrl, OpenCodeProvider.ConsoleUrl, UsageUrl);

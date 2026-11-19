@@ -64,7 +64,8 @@ public partial class ProviderManager : ObservableObject, IProviderManager
         {
             try
             {
-                _lastGoodByProvider[provider.Name] = await provider.GetMetricsAsync();
+                var result = await provider.GetMetricsAsync();
+                _lastGoodByProvider[provider.Name] = result.Metrics;
             }
             catch (Exception ex)
             {
