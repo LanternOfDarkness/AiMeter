@@ -26,10 +26,10 @@ public interface IUpdateManager
 {
     AppVersion CurrentVersion { get; }
 
-    /// <summary>The newest release from the last check, even when it is skipped or not newer.</summary>
+    /// <summary>The newest release from the last check, even when it is skipped or older.</summary>
     ReleaseInfo? AvailableRelease { get; }
 
-    /// <summary>True when an update can be offered: a release exists and is not skipped.</summary>
+    /// <summary>True when a newer release exists and is not skipped.</summary>
     bool HasAvailableUpdate { get; }
 
     /// <summary>True when <see cref="AvailableRelease"/> is the version the user skipped.</summary>

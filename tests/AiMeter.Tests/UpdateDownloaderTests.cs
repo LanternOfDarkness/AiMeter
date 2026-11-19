@@ -305,6 +305,56 @@ public class UpdateDownloaderTests
     }
 
     [Fact]
+    public async Task Download_budget_expiry_is_reported_as_a_download_failure()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            using var downloader = NewDownloader(
+                new HangingHandler(),
+                directory,
+                TimeSpan.FromMilliseconds(100));
+
+            var act = () => downloader.DownloadAsync(
+                NewRelease(RealExecutableHash, RealExecutableBytes.Length),
+                directory,
+                progress: null,
+                CancellationToken.None);
+
+            await act.Should().ThrowAsync<UpdateDownloadException>().WithMessage("*timed out*");
+            Directory.GetFiles(directory).Should().BeEmpty();
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_still_propagates_as_cancellation()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            using var downloader = NewDownloader(new HangingHandler(), directory);
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+            var act = () => downloader.DownloadAsync(
+                NewRelease(RealExecutableHash, RealExecutableBytes.Length),
+                directory,
+                progress: null,
+                cts.Token);
+
+            await act.Should().ThrowAsync<OperationCanceledException>();
+            Directory.GetFiles(directory).Should().BeEmpty();
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Two_downloads_use_distinct_staging_files()
     {
         var directory = NewTempDirectory();
@@ -424,8 +474,11 @@ public class UpdateDownloaderTests
         }
     }
 
-    private static UpdateDownloader NewDownloader(ScriptedHandler handler, string stagingDirectory) =>
-        new(handler, NullLogger<UpdateDownloader>.Instance, stagingDirectory);
+    private static UpdateDownloader NewDownloader(
+        HttpMessageHandler handler,
+        string stagingDirectory,
+        TimeSpan? downloadBudget = null) =>
+        new(handler, NullLogger<UpdateDownloader>.Instance, stagingDirectory, downloadBudget);
 
     private static ReleaseInfo NewRelease(
         string? sha256,
@@ -505,6 +558,17 @@ public class UpdateDownloaderTests
             }
 
             return Task.FromResult(_responses.Dequeue()(request));
+        }
+    }
+
+    private sealed class HangingHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("The hanging handler was cancelled without throwing.");
         }
     }
 

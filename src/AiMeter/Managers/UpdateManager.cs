@@ -81,7 +81,10 @@ public sealed class UpdateManager : IUpdateManager
     public ReleaseInfo? AvailableRelease { get; private set; }
 
     /// <inheritdoc />
-    public bool HasAvailableUpdate => AvailableRelease is not null && !IsSkipped;
+    public bool HasAvailableUpdate => OffersNewerVersion && !IsSkipped;
+
+    private bool OffersNewerVersion =>
+        AvailableRelease is { } release && release.Version.CompareTo(AppInfo.Current) > 0;
 
     /// <inheritdoc />
     public bool IsSkipped
@@ -97,10 +100,15 @@ public sealed class UpdateManager : IUpdateManager
     }
 
     /// <inheritdoc />
-    public bool IsInstallable => _preflight.CanUpdateInPlace;
+    public bool IsInstallable => _preflight.CanUpdateInPlace && HasUsableChecksum(AvailableRelease);
 
     /// <inheritdoc />
-    public string? InstallUnavailableReason => _preflight.CanUpdateInPlace ? null : _preflight.Reason;
+    public string? InstallUnavailableReason =>
+        _preflight.CanUpdateInPlace
+            ? HasUsableChecksum(AvailableRelease)
+                ? null
+                : "This release has no checksum; install it from the release page."
+            : _preflight.Reason;
 
     /// <inheritdoc />
     public bool IsChecking => _isChecking;
@@ -227,7 +235,7 @@ public sealed class UpdateManager : IUpdateManager
     /// <inheritdoc />
     public async Task<InstallResult> DownloadAndApplyAsync(CancellationToken ct)
     {
-        if (AvailableRelease is not { } release)
+        if (AvailableRelease is not { } release || !OffersNewerVersion)
         {
             return new InstallResult(false, "No update available.");
         }
@@ -236,6 +244,13 @@ public sealed class UpdateManager : IUpdateManager
         if (!_preflight.CanUpdateInPlace)
         {
             return new InstallResult(false, _preflight.Reason ?? "Automatic update unavailable.");
+        }
+
+        if (!HasUsableChecksum(release))
+        {
+            return new InstallResult(
+                false,
+                InstallUnavailableReason ?? "This release has no checksum; install it from the release page.");
         }
 
         var downloadCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -527,6 +542,9 @@ public sealed class UpdateManager : IUpdateManager
             _preflight = new UpdatePreflight(false, "Automatic update unavailable.");
         }
     }
+
+    private static bool HasUsableChecksum(ReleaseInfo? release) =>
+        release is null || release.Sha256 is not null || release.ChecksumAsset is not null;
 
     private string GetAvailableStatus(ReleaseInfo release)
     {

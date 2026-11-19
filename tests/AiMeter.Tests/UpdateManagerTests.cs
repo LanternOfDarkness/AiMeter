@@ -19,7 +19,17 @@ public class UpdateManagerTests
         return new AppVersion(current.Major, current.Minor, current.Patch + 1);
     }
 
-    private static ReleaseInfo ReleaseFor(AppVersion version) => new(
+    private static AppVersion OlderVersion()
+    {
+        var current = AppInfo.Current;
+        if (current.Patch > 0) return new AppVersion(current.Major, current.Minor, current.Patch - 1);
+        if (current.Minor > 0) return new AppVersion(current.Major, current.Minor - 1, 0);
+        return new AppVersion(Math.Max(0, current.Major - 1), 0, 0);
+    }
+
+    private static ReleaseInfo ReleaseFor(
+        AppVersion version,
+        string? sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") => new(
         version,
         "v" + version,
         $"https://github.com/LanternOfDarkness/AiMeter/releases/tag/v{version}",
@@ -28,7 +38,7 @@ public class UpdateManagerTests
             "AiMeter.exe",
             new Uri($"https://github.com/LanternOfDarkness/AiMeter/releases/download/v{version}/AiMeter.exe"),
             1024),
-        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        sha256,
         null);
 
     private sealed class Harness
@@ -306,5 +316,86 @@ public class UpdateManagerTests
         harness.Manager.HasAvailableUpdate.Should().BeFalse();
         harness.Manager.AvailableRelease.Should().Be(release);
         harness.Notified.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Installed_version_is_not_offered_or_downloaded()
+    {
+        var harness = new Harness();
+        var release = ReleaseFor(AppInfo.Current);
+        harness.Feed.Result = release;
+
+        var result = await harness.Manager.CheckAsync(manual: true, CancellationToken.None);
+
+        result.Status.Should().Be(UpdateCheckStatus.UpToDate);
+        harness.Manager.AvailableRelease.Should().Be(release);
+        harness.Manager.HasAvailableUpdate.Should().BeFalse();
+        harness.Manager.IsSkipped.Should().BeFalse();
+        harness.Manager.StatusText.Should().Be("You're up to date");
+        harness.Manager.IsInstallable.Should().BeTrue();
+        harness.Notified.Should().BeEmpty();
+
+        var install = await harness.Manager.DownloadAndApplyAsync(CancellationToken.None);
+
+        install.RestartStarted.Should().BeFalse();
+        install.Error.Should().Be("No update available.");
+        harness.Downloader.DownloadCallCount.Should().Be(0);
+        harness.Installer.AppliedPaths.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Older_version_is_not_offered_or_downloaded()
+    {
+        var harness = new Harness();
+        harness.Feed.Result = ReleaseFor(OlderVersion());
+
+        await harness.Manager.CheckAsync(manual: true, CancellationToken.None);
+
+        harness.Manager.HasAvailableUpdate.Should().BeFalse();
+        harness.Manager.IsSkipped.Should().BeFalse();
+        harness.Manager.StatusText.Should().Be("You're up to date");
+        harness.Notified.Should().BeEmpty();
+
+        var install = await harness.Manager.DownloadAndApplyAsync(CancellationToken.None);
+
+        install.RestartStarted.Should().BeFalse();
+        harness.Downloader.DownloadCallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Release_without_a_checksum_is_not_installable()
+    {
+        var harness = new Harness();
+        harness.Feed.Result = ReleaseFor(NewerVersion(), sha256: null);
+
+        await harness.Manager.CheckAsync(manual: true, CancellationToken.None);
+
+        harness.Manager.HasAvailableUpdate.Should().BeTrue();
+        harness.Manager.IsInstallable.Should().BeFalse();
+        harness.Manager.InstallUnavailableReason.Should().Contain("checksum");
+
+        var install = await harness.Manager.DownloadAndApplyAsync(CancellationToken.None);
+
+        install.RestartStarted.Should().BeFalse();
+        install.Error.Should().Be(harness.Manager.InstallUnavailableReason);
+        harness.Downloader.DownloadCallCount.Should().Be(0);
+        harness.Installer.AppliedPaths.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Skipped_newer_version_still_installs_when_explicitly_requested()
+    {
+        var harness = new Harness();
+        harness.Feed.Result = ReleaseFor(NewerVersion());
+        await harness.Manager.CheckAsync(manual: true, CancellationToken.None);
+
+        harness.Manager.SkipAvailableVersion();
+        harness.Manager.HasAvailableUpdate.Should().BeFalse();
+
+        var result = await harness.Manager.DownloadAndApplyAsync(CancellationToken.None);
+
+        result.RestartStarted.Should().BeTrue();
+        harness.Downloader.DownloadCallCount.Should().Be(1);
+        harness.Installer.AppliedPaths.Should().ContainSingle();
     }
 }

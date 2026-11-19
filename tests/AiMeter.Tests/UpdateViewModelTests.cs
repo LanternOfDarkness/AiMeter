@@ -257,4 +257,38 @@ public class UpdateViewModelTests
 
         manager2.CheckCallCount.Should().Be(0);
     }
+
+    [Fact]
+    public void DownloadButtonIsHiddenAfterAFailure()
+    {
+        var (vm, manager, _) = Create();
+        manager.AvailableRelease = Release();
+        manager.HasAvailableUpdate = true;
+        manager.IsInstallable = true;
+        manager.LastError = "Download failed";
+
+        manager.RaiseStateChanged();
+
+        vm.ShowDownloadButton.Should().BeFalse();
+    }
+
+    [Fact]
+    public void UpdateButtonsAreHiddenWithoutANewerRelease()
+    {
+        var (vm, manager, _) = Create();
+        manager.AvailableRelease = Release();
+        manager.HasAvailableUpdate = false;
+        manager.IsInstallable = true;
+
+        manager.RaiseStateChanged();
+
+        vm.ShowDownloadButton.Should().BeFalse();
+        vm.ShowReleasePageButton.Should().BeFalse();
+
+        manager.IsInstallable = false;
+        manager.RaiseStateChanged();
+
+        vm.ShowDownloadButton.Should().BeFalse();
+        vm.ShowReleasePageButton.Should().BeFalse();
+    }
 }

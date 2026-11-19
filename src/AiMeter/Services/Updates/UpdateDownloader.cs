@@ -86,12 +86,13 @@ public sealed class UpdateDownloader : IUpdateDownloader, IDisposable
     private const string UserAgentProduct = "AiMeter";
 
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(100);
-    private static readonly TimeSpan DownloadBudget = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan DefaultDownloadBudget = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan StagedFileMaxAge = TimeSpan.FromDays(7);
 
     private readonly HttpClient _httpClient;
     private readonly ILogger<UpdateDownloader>? _logger;
     private readonly string _stagingDirectory;
+    private readonly TimeSpan _downloadBudget;
 
     /// <summary>Creates a downloader that writes to the default staging directory.</summary>
     public UpdateDownloader(ILogger<UpdateDownloader>? logger = null)
@@ -103,12 +104,14 @@ public sealed class UpdateDownloader : IUpdateDownloader, IDisposable
     public UpdateDownloader(
         HttpMessageHandler handler,
         ILogger<UpdateDownloader>? logger = null,
-        string? stagingDirectory = null)
+        string? stagingDirectory = null,
+        TimeSpan? downloadBudget = null)
     {
         ArgumentNullException.ThrowIfNull(handler);
 
         _httpClient = new HttpClient(handler, disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan };
         _logger = logger;
+        _downloadBudget = downloadBudget ?? DefaultDownloadBudget;
         _stagingDirectory = string.IsNullOrWhiteSpace(stagingDirectory)
             ? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -137,7 +140,7 @@ public sealed class UpdateDownloader : IUpdateDownloader, IDisposable
         var stagedPath = partialPath[..^PartialExtension.Length];
 
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        budget.CancelAfter(DownloadBudget);
+        budget.CancelAfter(_downloadBudget);
         var token = budget.Token;
 
         try
@@ -195,6 +198,11 @@ public sealed class UpdateDownloader : IUpdateDownloader, IDisposable
         {
             TryDelete(partialPath);
             TryDelete(stagedPath);
+
+            if (ex is OperationCanceledException && !ct.IsCancellationRequested)
+            {
+                throw new UpdateDownloadException("The update download timed out.", ex);
+            }
 
             if (ex is OperationCanceledException or UpdateDownloadException or UpdateIntegrityException)
             {

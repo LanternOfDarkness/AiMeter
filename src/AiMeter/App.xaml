@@ -17,7 +17,7 @@
                 <ContextMenu>
                     <MenuItem Header="{Binding AvailableUpdateText}" Command="{Binding ShowUpdateCommand}"
                               Visibility="{Binding HasAvailableUpdate, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    <Separator />
+                    <Separator Visibility="{Binding HasAvailableUpdate, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <MenuItem Header="Show Widget" Command="{Binding ShowWidgetCommand}" />
                     <MenuItem Header="Settings" Command="{Binding ShowSettingsCommand}" />
                     <MenuItem Header="Check for updates…" Command="{Binding CheckForUpdatesCommand}" />
