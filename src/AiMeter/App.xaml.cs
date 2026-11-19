@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -57,6 +60,11 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        if (TryGetRestartedFromPid(e.Args) is int previousPid)
+        {
+            await WaitForPreviousInstanceExitAsync(previousPid);
+        }
+
         await _host!.StartAsync();
 
         // Start monitoring usage
@@ -96,6 +104,105 @@ public partial class App : Application
         {
             _notifyIcon?.ShowNotification(alert.Title, alert.Message, NotificationIcon.Info);
         };
+
+        // Fire-and-forget is safe: CleanupOldExecutablesAsync catches everything it throws.
+        _ = CleanupOldExecutablesAsync(_host.Services.GetService<ILogger<App>>());
+    }
+
+    private static int? TryGetRestartedFromPid(string[] args)
+    {
+        for (var i = 0; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], "--restarted-from", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var pid)
+                && pid > 0)
+            {
+                return pid;
+            }
+        }
+
+        return null;
+    }
+
+    private async Task WaitForPreviousInstanceExitAsync(int pid)
+    {
+        var logger = _host!.Services.GetService<ILogger<App>>();
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(pid);
+                if (process.HasExited)
+                {
+                    return;
+                }
+            }
+            catch (ArgumentException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                logger?.LogDebug(ex, "Could not query the previous AiMeter process {Pid}.", pid);
+            }
+
+            await Task.Delay(250);
+        }
+
+        logger?.LogWarning("Timed out waiting for the previous AiMeter process {Pid} to exit.", pid);
+    }
+
+    private static async Task CleanupOldExecutablesAsync(ILogger? logger)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+
+            var target = Environment.ProcessPath;
+            var directory = string.IsNullOrEmpty(target) ? null : Path.GetDirectoryName(target);
+            if (string.IsNullOrEmpty(target) || string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+            {
+                return;
+            }
+
+            var leftovers = new List<string> { target + ".old" };
+            try
+            {
+                leftovers.AddRange(Directory.EnumerateFiles(directory, Path.GetFileName(target) + ".old-*"));
+            }
+            catch (Exception ex)
+            {
+                logger?.LogDebug(ex, "Could not enumerate update backups in {Directory}.", directory);
+            }
+
+            foreach (var path in leftovers)
+            {
+                for (var attempt = 1; attempt <= 10 && File.Exists(path); attempt++)
+                {
+                    try
+                    {
+                        File.Delete(path);
+                        logger?.LogDebug("Deleted the leftover update backup {Path}.", path);
+                        break;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        if (attempt == 10)
+                        {
+                            logger?.LogWarning(ex, "Could not delete the leftover update backup {Path}.", path);
+                            break;
+                        }
+
+                        await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger?.LogDebug(ex, "Update backup cleanup stopped early.");
+        }
     }
 
     protected override async void OnExit(ExitEventArgs e)
