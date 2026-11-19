@@ -1,7 +1,7 @@
 # Offline cache, stale-data warning & logs-folder button — plan
 
 **Date:** 2026-11-19
-**Status:** Implemented 2026-11-19 — commits `27d7da0`, `4ee0c37`, `d24cee8`, `835edf0`, `27b89f9`. Manual offline/UI verification and the README/CHANGELOG release notes are not done.
+**Status:** Implemented 2026-11-19 — commits `27d7da0`, `4ee0c37`, `d24cee8`, `835edf0`, `27b89f9`, `b2e1b3c`, `4c261af`. Manual offline/UI verification is not done.
 **Out of scope:** multiple OpenCode accounts (deferred to a later version)
 
 ## Implementation status (2026-11-19)
@@ -9,14 +9,14 @@
 - **Delivered:** explicit `ProviderFetchResult` contract; persisted last-good snapshot at
   `%AppData%\AiMeter\cache.json` with startup restore; stale `⚠` + dimmed fill + age tooltip
   in Compact, Taskbar and Deskband; auth/no-data cache invalidation; OpenCode WebView2 init
-  retry; Settings → General → Diagnostics → **Open logs folder**; privacy/site copy.
+  retry; Settings → General → Diagnostics → **Open logs folder**; privacy/site copy; README
+  feature bullets and `CHANGELOG.md` Unreleased entries (`4c261af`).
 - **Verified:** `dotnet build AiMeter.slnx` succeeded; `dotnet test
   tests/AiMeter.Tests/AiMeter.Tests.csproj` passed (106 tests, 0 failed). Two review rounds;
   the UTC/local stale-age defect and the Claude `/usage` 401/403 mapping were fixed in
   `27b89f9`.
 - **Not done:** manual network-block / restart / three-layout / Explorer-open checks in a live
-  WebView2 session, and `README.md` / `CHANGELOG.md` feature notes (another session held those
-  files uncommitted throughout).
+  WebView2 session.
 
 ## Overview
 
