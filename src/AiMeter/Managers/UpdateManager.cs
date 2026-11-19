@@ -83,6 +83,9 @@ public sealed class UpdateManager : IUpdateManager
     /// <inheritdoc />
     public bool HasAvailableUpdate => OffersNewerVersion && !IsSkipped;
 
+    /// <inheritdoc />
+    public bool HasNewerRelease => OffersNewerVersion;
+
     private bool OffersNewerVersion =>
         AvailableRelease is { } release && release.Version.CompareTo(AppInfo.Current) > 0;
 

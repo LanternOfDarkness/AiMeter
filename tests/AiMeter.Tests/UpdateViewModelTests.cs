@@ -10,17 +10,19 @@ namespace AiMeter.Tests;
 
 public class UpdateViewModelTests
 {
-    private static ReleaseInfo Release() => new(
-        new AppVersion(9, 9, 9),
-        "v9.9.9",
-        "https://github.com/LanternOfDarkness/AiMeter/releases/tag/v9.9.9",
+    private static ReleaseInfo Release(AppVersion version) => new(
+        version,
+        "v" + version,
+        $"https://github.com/LanternOfDarkness/AiMeter/releases/tag/v{version}",
         "Release notes",
         new ReleaseAsset(
             "AiMeter.exe",
-            new Uri("https://github.com/LanternOfDarkness/AiMeter/releases/download/v9.9.9/AiMeter.exe"),
+            new Uri($"https://github.com/LanternOfDarkness/AiMeter/releases/download/v{version}/AiMeter.exe"),
             1024),
         null,
         null);
+
+    private static ReleaseInfo Release() => Release(new AppVersion(9, 9, 9));
 
     private sealed class FakeProcessLauncher : IProcessLauncher
     {
@@ -53,6 +55,7 @@ public class UpdateViewModelTests
         manager.CurrentVersion = new AppVersion(2, 0, 2);
         manager.AvailableRelease = release;
         manager.HasAvailableUpdate = true;
+        manager.HasNewerRelease = true;
         manager.IsSkipped = true;
         manager.IsInstallable = false;
         manager.InstallUnavailableReason = "Development build";
@@ -104,6 +107,7 @@ public class UpdateViewModelTests
         var (vm, manager, _) = Create();
         manager.AvailableRelease = Release();
         manager.HasAvailableUpdate = true;
+        manager.HasNewerRelease = true;
 
         manager.RaiseStateChanged();
 
@@ -264,6 +268,7 @@ public class UpdateViewModelTests
         var (vm, manager, _) = Create();
         manager.AvailableRelease = Release();
         manager.HasAvailableUpdate = true;
+        manager.HasNewerRelease = true;
         manager.IsInstallable = true;
         manager.LastError = "Download failed";
 
@@ -273,11 +278,12 @@ public class UpdateViewModelTests
     }
 
     [Fact]
-    public void UpdateButtonsAreHiddenWithoutANewerRelease()
+    public void UpdateButtonsAreHiddenWhenTheReleaseIsNotNewer()
     {
         var (vm, manager, _) = Create();
-        manager.AvailableRelease = Release();
+        manager.AvailableRelease = Release(new AppVersion(2, 0, 1));
         manager.HasAvailableUpdate = false;
+        manager.HasNewerRelease = false;
         manager.IsInstallable = true;
 
         manager.RaiseStateChanged();
@@ -290,5 +296,41 @@ public class UpdateViewModelTests
 
         vm.ShowDownloadButton.Should().BeFalse();
         vm.ShowReleasePageButton.Should().BeFalse();
+    }
+
+    [Fact]
+    public void SkippedNewerReleaseKeepsTheDownloadButton()
+    {
+        var (vm, manager, _) = Create();
+        manager.AvailableRelease = Release();
+        manager.HasAvailableUpdate = false;
+        manager.HasNewerRelease = true;
+        manager.IsSkipped = true;
+        manager.IsInstallable = true;
+
+        manager.RaiseStateChanged();
+
+        vm.ShowDownloadButton.Should().BeTrue();
+        vm.ShowSkipButton.Should().BeFalse();
+    }
+
+    [Fact]
+    public void RetryButtonRequiresANewerRelease()
+    {
+        var (vm, manager, _) = Create();
+        manager.AvailableRelease = Release(new AppVersion(2, 0, 1));
+        manager.HasNewerRelease = false;
+        manager.IsInstallable = true;
+        manager.LastError = "Check failed";
+
+        manager.RaiseStateChanged();
+
+        vm.ShowRetryButton.Should().BeFalse();
+
+        manager.AvailableRelease = Release();
+        manager.HasNewerRelease = true;
+        manager.RaiseStateChanged();
+
+        vm.ShowRetryButton.Should().BeTrue();
     }
 }

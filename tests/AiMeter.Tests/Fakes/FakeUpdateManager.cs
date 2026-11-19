@@ -12,6 +12,8 @@ public sealed class FakeUpdateManager : IUpdateManager
 
     public bool HasAvailableUpdate { get; set; }
 
+    public bool HasNewerRelease { get; set; }
+
     public bool IsSkipped { get; set; }
 
     public bool IsInstallable { get; set; } = true;

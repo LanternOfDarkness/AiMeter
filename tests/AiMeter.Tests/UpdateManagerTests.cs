@@ -116,6 +116,7 @@ public class UpdateManagerTests
 
         harness.Manager.IsSkipped.Should().BeTrue();
         harness.Manager.HasAvailableUpdate.Should().BeFalse();
+        harness.Manager.HasNewerRelease.Should().BeTrue();
         harness.Manager.AvailableRelease.Should().Be(release);
         harness.Manager.StatusText.Should().Be($"Skipped — v{release.Version}");
         harness.Store.State.SkippedVersion.Should().Be(release.Version.ToString());

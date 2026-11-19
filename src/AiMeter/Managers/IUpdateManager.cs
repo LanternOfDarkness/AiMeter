@@ -32,10 +32,20 @@ public interface IUpdateManager
     /// <summary>True when a newer release exists and is not skipped.</summary>
     bool HasAvailableUpdate { get; }
 
+    /// <summary>
+    /// True when the newest release is newer than the running build; unlike
+    /// <see cref="HasAvailableUpdate"/> this ignores the skipped state, so a skipped version
+    /// can still be installed on an explicit click.
+    /// </summary>
+    bool HasNewerRelease { get; }
+
     /// <summary>True when <see cref="AvailableRelease"/> is the version the user skipped.</summary>
     bool IsSkipped { get; }
 
-    /// <summary>True when this instance can replace its own executable.</summary>
+    /// <summary>
+    /// True when this instance can replace its own executable; requires a verifiable checksum
+    /// for the available release and a passing preflight.
+    /// </summary>
     bool IsInstallable { get; }
 
     /// <summary>Why automatic installation is unavailable, or <see langword="null"/> when it is.</summary>

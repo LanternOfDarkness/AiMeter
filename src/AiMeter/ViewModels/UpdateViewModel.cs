@@ -76,19 +76,19 @@ public sealed partial class UpdateViewModel : ObservableObject
         ?? "Never";
 
     public bool ShowDownloadButton =>
-        _manager.HasAvailableUpdate
+        _manager.HasNewerRelease
         && _manager.IsInstallable
         && !_manager.IsDownloading
         && _manager.LastError is null;
 
     public bool ShowReleasePageButton =>
-        _manager.HasAvailableUpdate && !_manager.IsInstallable && !_manager.IsDownloading;
+        _manager.HasNewerRelease && !_manager.IsInstallable && !_manager.IsDownloading;
 
     public bool ShowCancelButton => _manager.IsDownloading;
 
     public bool ShowRetryButton =>
         _manager.LastError is not null
-        && _manager.AvailableRelease is not null
+        && _manager.HasNewerRelease
         && _manager.IsInstallable
         && !_manager.IsDownloading;
 
