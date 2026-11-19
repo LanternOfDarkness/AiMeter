@@ -105,6 +105,20 @@ public partial class UsageMetric : ObservableObject
     [NotifyPropertyChangedFor(nameof(TooltipDetail))]
     private string? _currency;
 
+    /// <summary>
+    /// True when the values came from the last-good cache because the latest fetch failed.
+    /// Set by <see cref="Managers.ProviderManager"/>; providers never populate it.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isStale;
+
+    /// <summary>
+    /// UTC time of the last successful fetch that produced these values. Set by
+    /// <see cref="Managers.ProviderManager"/>; providers never populate it.
+    /// </summary>
+    [ObservableProperty]
+    private DateTime? _lastUpdatedUtc;
+
     public double RemainingPercentage => TotalQuota > 0 ? (RemainingQuota / TotalQuota) * 100 : 0;
 
     private string CurrencySymbol => Currency is "USD" or null ? "$" : Currency + " ";
@@ -169,5 +183,7 @@ public partial class UsageMetric : ObservableObject
         LimitAmount = other.LimitAmount;
         BalanceAmount = other.BalanceAmount;
         Currency = other.Currency;
+        IsStale = other.IsStale;
+        LastUpdatedUtc = other.LastUpdatedUtc;
     }
 }

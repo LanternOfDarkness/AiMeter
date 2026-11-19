@@ -24,6 +24,9 @@ public partial class App : Application
             .ConfigureLogging(logging => logging.AddFileLogger())
             .ConfigureServices((context, services) =>
             {
+                // Register Services
+                services.AddSingleton<IMetricCacheStore, FileMetricCacheStore>();
+
                 // Register Managers
                 services.AddSingleton<IProviderManager, ProviderManager>();
                 services.AddSingleton<ISettingsManager, SettingsManager>();
